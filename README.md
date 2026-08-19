@@ -230,11 +230,13 @@ must be bumped by hand.
 
 ## Status
 
+All three build from the current source on ESPHome 2026.7.4:
+
 | Target | Config | Compiles | On hardware |
 |---|---|---|---|
-| HA Voice PE | yes | RAM 44.8%, Flash 35.2% of 8 MB | not yet |
+| HA Voice PE | yes | RAM 44.9%, Flash 35.3% of 8 MB | not yet |
 | Satellite1 | yes | RAM 46.5%, Flash 36.0% of 8 MB | **yes, calibrated** |
-| ReSpeaker Lite | yes | RAM 44.8%, Flash 71.1% of 3.9 MB | not yet |
+| ReSpeaker Lite | yes | RAM 44.9%, Flash 71.2% of 3.9 MB | not yet |
 
 The ReSpeaker partition is half the size of the others, so it has the least
 headroom — worth watching if you add wake word models.
@@ -305,7 +307,12 @@ against the ESPHome component APIs — but the design lineage is theirs and is
 credited above. If you are a maintainer of one of those projects and want
 something changed here, please open an issue.
 
-This repository does not yet carry a license of its own.
+This repository is **MIT licensed** — see [LICENSE](LICENSE). Take the fixes,
+including into either upstream project; no attribution back here is required.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 Plum Solutions.
 
 ---
 

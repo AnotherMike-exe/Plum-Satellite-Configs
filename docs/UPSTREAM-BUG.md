@@ -166,7 +166,7 @@ happened to be when playback began.
 **Not present upstream by luck rather than design — and easy to reintroduce.**
 
 The accumulators in `sound_level.cpp` are reset to `0` after each window
-(`:127`, `:137`). If the microphone feeds digital silence — a hardware mute, a
+(`:127`, `:136`). If the microphone feeds digital silence — a hardware mute, a
 muted XMOS path, a dead channel — then `squared_samples_sum_ == 0` and the
 published value is `10 * log10(0)` = **`-inf`**, not `NaN`.
 

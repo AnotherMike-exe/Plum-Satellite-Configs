@@ -82,7 +82,8 @@ substitutions:
   #   median window 5  -- rejects any transient <= 2s outright (~3s delay)
   #   EMA alpha 0.4    -- tau = -1/ln(0.6) = 1.96s; 90% of a step at ~4.5s
   #   publish every 3  -- a new value every 3s
-  # => ~7.5s to 90% of a step, <= 9s worst case with publish quantisation.
+  # => ~7.5s to 90% of a step (3s median + 4.5s EMA); publishing every 3rd
+  #    sample puts the worst case at the wire at ~10.5s.
   ambient_measurement_duration: 1000ms
   ambient_median_window: "5"
   ambient_smoothing_alpha: "0.4"

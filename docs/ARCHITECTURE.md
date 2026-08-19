@@ -118,9 +118,10 @@ latency came from.
 
 **Timing.** At `measurement_duration: 1000ms`, a median window of 5 rejects any
 transient shorter than ~2 s outright, and an EMA with `alpha: 0.4` has
-τ ≈ 1.96 s. A step reaches 90% in roughly 7.5 s, published within 9 s worst
-case. Both windows are counted in samples, so changing `measurement_duration`
-rescales the whole chain.
+τ ≈ 1.96 s. A step reaches 90% in roughly 7.5 s (3 s for the median to move,
+4.5 s for the EMA), and since values publish every `ambient_publish_every`
+samples the worst case at the wire is ~10.5 s. Both windows are counted in
+samples, so changing `measurement_duration` rescales the whole chain.
 
 **Median before EMA, deliberately.** A moving average cannot reject an outlier,
 only smear it — a one-second door slam 40 dB above the floor moves a 5-wide mean
