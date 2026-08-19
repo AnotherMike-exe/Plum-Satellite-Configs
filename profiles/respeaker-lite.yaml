@@ -24,9 +24,12 @@
 # ---------------------------------------------------------------------------
 
 substitutions:
-  # Overridable by the device file. Never measured on this hardware -- the
-  # mic/ADC path differs from the PE, so PE values do not transfer.
+  # NOT YET MEASURED. Different mic/ADC path from the PE; do not assume PE
+  # values transfer. Check whether this stream is AGC'd like the Satellite1's
+  # before trusting ambient_max_db: 0.
   ambient_min_db: "-50"
+  ambient_max_db: "0"
+  dv_curve_exponent: "0.4"
 
 packages:
   vendor:
@@ -45,6 +48,8 @@ packages:
       media_player_id: external_media_player
       wake_word_id: mww
       ambient_min_db: ${ambient_min_db}
+      ambient_max_db: ${ambient_max_db}
+      dv_curve_exponent: ${dv_curve_exponent}
       # The anchor is normalised 0..1 on every platform: both media player
       # platforms remap 0..1 onto their own volume_min/volume_max internally
       # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),

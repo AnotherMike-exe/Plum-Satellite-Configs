@@ -13,9 +13,12 @@
 # ---------------------------------------------------------------------------
 
 substitutions:
-  # Overridable by the device file. Measure this per unit -- do not ship the
-  # default. See docs/CALIBRATION.md.
+  # NOT YET MEASURED. Raw I2S capture with no AGC, so unlike the Satellite1
+  # this one should use most of the dBFS scale -- keep ambient_max_db at 0
+  # until measurement says otherwise.
   ambient_min_db: "-42"
+  ambient_max_db: "0"
+  dv_curve_exponent: "0.4"
 
 packages:
   vendor: github://esphome/home-assistant-voice-pe/home-assistant-voice.yaml@26.6.0
@@ -29,6 +32,8 @@ packages:
       media_player_id: external_media_player
       wake_word_id: mww
       ambient_min_db: ${ambient_min_db}
+      ambient_max_db: ${ambient_max_db}
+      dv_curve_exponent: ${dv_curve_exponent}
       # The anchor is normalised 0..1 on every platform: both media player
       # platforms remap 0..1 onto their own volume_min/volume_max internally
       # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),

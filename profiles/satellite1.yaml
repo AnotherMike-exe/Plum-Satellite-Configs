@@ -25,9 +25,16 @@
 # ---------------------------------------------------------------------------
 
 substitutions:
-  # Overridable by the device file. Re-measure after switching to RMS -- the
-  # previously validated -55 was calibrated against peak on the wrong channel.
-  ambient_min_db: "-55"
+  # MEASURED 2026-08-19 on unit 01 (see docs/CALIBRATION.md).
+  #   quiet room, AC hum only ... -72.3 dB (stable, +/-0.7)
+  #   talking + background TV .... -67.8 dB median, -63.6 dB loudest
+  # Usable range is only ~9 dB: the XMOS front-end's AGC and noise suppression
+  # level-normalise this stream, so the ceiling is nowhere near 0 dBFS. Leaving
+  # ambient_max_db at 0 would squeeze the whole room into the bottom 12% of the
+  # scale.
+  ambient_min_db: "-71"
+  ambient_max_db: "-62"
+  dv_curve_exponent: "0.7"
 
 packages:
   vendor:
@@ -47,6 +54,8 @@ packages:
       media_player_id: external_media_player
       wake_word_id: mww
       ambient_min_db: ${ambient_min_db}
+      ambient_max_db: ${ambient_max_db}
+      dv_curve_exponent: ${dv_curve_exponent}
       # The anchor is normalised 0..1 on every platform: both media player
       # platforms remap 0..1 onto their own volume_min/volume_max internally
       # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),

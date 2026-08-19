@@ -38,15 +38,20 @@ device file — no `!extend` needed. Add this temporarily:
 
 ```yaml
 logger:
-  level: INFO
-  initial_level: INFO
+  level: DEBUG
+  initial_level: DEBUG
   logs:
     ambient_sound: DEBUG
     dynamic_volume: DEBUG
+    sensor: WARN
+    component: WARN
+    api: WARN
 ```
 
-Keep the global level at `INFO`. Setting it to `DEBUG` globally buries the two
-tags you care about under everything else the device logs.
+**The global level is a ceiling, not a default.** ESPHome rejects a per-tag
+level more verbose than the global one, so seeing `ambient_sound: DEBUG`
+requires `level: DEBUG` globally. Keep the output readable by raising the noisy
+tags — `sensor`, `component`, `api` — rather than by lowering the global.
 
 ### 2. Flash and watch
 

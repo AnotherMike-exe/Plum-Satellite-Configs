@@ -4,10 +4,13 @@
 substitutions:
   name: satellite1-d09ee8
   friendly_name: FutureProofHomes - Satellite1
-  # Quiet-room floor measured on THIS unit. See docs/CALIBRATION.md.
-  # -55 was validated against the old (peak, channel 0, gain 1) setup.
-  # RE-MEASURE: this profile now reads RMS on channel 1 at gain 6.
-  ambient_min_db: "-55"
+  # MEASURED 2026-08-19: quiet room (AC hum only) sits at -72.3 dB, talking
+  # plus background TV spans -67.8 to -63.6 dB. Floor set 1.3 dB above the
+  # quiet mean so silence clamps to 0%; ceiling 1.6 dB above the loudest
+  # observed. The old -55 was 17 dB above the real floor, which is why the
+  # sensor read 0% permanently.
+  ambient_min_db: "-71"
+  ambient_max_db: "-62"
 
 packages:
   plum: !include ../profiles/satellite1.yaml
@@ -26,10 +29,16 @@ wifi:
   password: !secret wifi_password
 
 # Uncomment while calibrating this unit's noise floor, then comment out again.
-# Keep the global level at INFO -- DEBUG globally buries these two tags.
 # See docs/CALIBRATION.md.
-#logger:
-#  level: INFO
-#  logs:
-#    ambient_sound: DEBUG
-#    dynamic_volume: DEBUG
+logger:
+  level: DEBUG
+  initial_level: DEBUG
+  logs:
+    ambient_sound: DEBUG
+    dynamic_volume: DEBUG
+    # Global level is the CEILING -- a per-tag level cannot be more verbose
+    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
+    # noisy tags here, not by lowering the global level.
+    sensor: WARN
+    component: WARN
+    api: WARN

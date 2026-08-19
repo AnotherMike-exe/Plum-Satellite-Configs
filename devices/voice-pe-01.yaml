@@ -26,10 +26,16 @@ wifi:
   password: !secret wifi_password
 
 # Uncomment while calibrating this unit's noise floor, then comment out again.
-# Keep the global level at INFO -- DEBUG globally buries these two tags.
 # See docs/CALIBRATION.md.
 #logger:
-#  level: INFO
+#  level: DEBUG
+#  initial_level: DEBUG
 #  logs:
 #    ambient_sound: DEBUG
 #    dynamic_volume: DEBUG
+#    # Global level is the CEILING -- a per-tag level cannot be more verbose
+#    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
+#    # noisy tags here, not by lowering the global level.
+#    sensor: WARN
+#    component: WARN
+#    api: WARN
