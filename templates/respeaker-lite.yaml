@@ -1,0 +1,63 @@
+# =============================================================================
+# formatBCE ReSpeaker Lite
+#
+# COPY THIS FILE to your ESPHome config directory (the ESPHome Device Builder
+# add-on's /config/esphome/, or anywhere you run `esphome` from), rename it to
+# your device, and edit the three marked values below. Nothing else needs to
+# change.
+#
+# You do not need the rest of this repository -- the shared logic is fetched
+# from GitHub at build time.
+# =============================================================================
+
+substitutions:
+  # 1. REPLACE -- must match the device's EXISTING name in Home Assistant.
+  #    Changing the name of a device HA already knows registers a second,
+  #    unrelated device and orphans all its entities.
+  name: change-me
+  friendly_name: Change Me
+
+  # 2. Calibration bounds. These are first-boot defaults only: each device
+  #    stores its own calibration, so a unit that has been calibrated keeps its
+  #    measured values and ignores these. Use the Calibrate buttons in Home
+  #    Assistant rather than editing them by hand -- see docs/CALIBRATION.md.
+  #    Reference: a ReSpeaker measured -76.1 dB in a quiet room (sd 1.11). The
+  #    ceiling is unmeasured -- 0 makes the device under-react until calibrated.
+  ambient_min_db: "-74.0"
+  ambient_max_db: "0"
+
+packages:
+  plum: github://AnotherMike-exe/Plum-Satellite-Configs/lib/profiles/respeaker-lite.yaml@v1.1.0
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+# 3. REPLACE -- api_key must be the key Home Assistant already has stored for
+#    this device, or HA cannot reconnect after flashing. Generate a new one
+#    with: openssl rand -base64 32
+api:
+  encryption:
+    key: !secret api_key_change_me
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# The formatBCE base requires an OTA password; the other two platforms do not.
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# Uncomment while tuning by hand; not needed for the Calibrate buttons.
+# The global level is a ceiling, so per-tag DEBUG requires DEBUG globally.
+#logger:
+#  level: DEBUG
+#  initial_level: DEBUG
+#  logs:
+#    ambient_sound: DEBUG
+#    dynamic_volume: DEBUG
+#    sensor: WARN
+#    component: WARN
+#    api: WARN

@@ -46,7 +46,7 @@ packages:
       - config/common/components.external.yaml
 
   dynamic_volume: !include
-    file: ../packages/dynamic-volume.yaml
+    file: ../dynamic-volume.yaml
     vars:
       mic_id: sat1_mics
       mic_channel: "1"

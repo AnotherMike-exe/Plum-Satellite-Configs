@@ -33,35 +33,33 @@ to the ESPHome source that proves it, in
   reachable on your network
 - Your WiFi credentials and the device's API key
 
-### 2. Set up
+### 2. Take the template for your device
+
+| Your hardware | Copy |
+|---|---|
+| Home Assistant Voice PE | [`templates/voice-pe.yaml`](templates/voice-pe.yaml) |
+| FutureProofHomes Satellite1 | [`templates/satellite1.yaml`](templates/satellite1.yaml) |
+| formatBCE ReSpeaker Lite | [`templates/respeaker-lite.yaml`](templates/respeaker-lite.yaml) |
+
+Put it wherever you run ESPHome from — for the **ESPHome Device Builder**
+add-on that is `/config/esphome/`. You do not need the rest of this repo; the
+shared logic is fetched from GitHub at build time.
+
+Edit the three marked values (device `name`, `friendly_name`, API key) and add
+the secrets listed in [templates/README.md](templates/README.md) to the
+`secrets.yaml` beside it.
+
+**Keep the `name` byte-identical** to what Home Assistant already knows the
+device as. Changing it registers a second, unrelated device and orphans every
+entity attached to the old one.
+
+### 3. Flash
+
+From the Device Builder, hit **Install**. Or from a terminal:
 
 ```bash
-git clone https://github.com/AnotherMike-exe/Plum-Satellite-Configs.git
-cd Plum-Satellite-Configs
-
-cp devices/secrets.yaml.example devices/secrets.yaml
-$EDITOR devices/secrets.yaml          # WiFi + one API key per device
+esphome run satellite1.yaml
 ```
-
-Check everything resolves before touching hardware:
-
-```bash
-scripts/validate-all.sh
-```
-
-### 3. Deploy
-
-Pick the device file matching your hardware and flash it:
-
-```bash
-esphome run devices/satellite1-01.yaml
-```
-
-Edit `name` and `friendly_name` in that file to match your unit first. **If the
-device already exists in Home Assistant, keep its existing `name` exactly** —
-changing it registers a second, unrelated device and orphans your entities.
-
-Flashing is over the network; no USB needed as long as the device is reachable.
 
 ### 4. Calibrate
 
@@ -154,79 +152,50 @@ between platforms — measure each one.
 
 ## Layout
 
+Two kinds of file, and the split is the point:
+
 ```
-packages/dynamic-volume.yaml   All the logic. One parameterised file.
-profiles/*.yaml                Vendor pin + hardware binding, one per platform.
-devices/*.yaml                 Per unit: name, calibration, credentials.
-scripts/validate-all.sh        Resolve every device config.
-docs/                          Calibration, the upstream bugs, architecture.
-```
-
-Three layers, because the settings split three ways: what the *package* does
-(shared), what a *platform* needs (mic id, gain), and what a *unit* needs (name,
-its room). Values pass down through `!include` `vars:`, which are lexically
-scoped — they cannot collide with a vendor package's own substitutions.
-
-`!secret` resolves relative to the config file's directory, which is why
-`secrets.yaml` lives in `devices/`.
-
-### Managing devices from Home Assistant
-
-`devices/*.yaml` use `!include ../profiles/...`, so they only work inside a
-checkout. **[`dashboard/`](dashboard/) holds ready-to-paste equivalents** for the
-ESPHome Device Builder add-on, pinned to a release tag:
-
-```yaml
-packages:
-  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@v1.0.0
+templates/     COPY ONE OF THESE. One per supported device. Self-contained.
+lib/           Implementation. Referenced by templates, never deployed directly.
+  dynamic-volume.yaml    the behaviour, fully parameterised
+  profiles/*.yaml        vendor pin + hardware binding, one per platform
+docs/          Calibration, the upstream bugs, architecture.
+scripts/       validate-all.sh
 ```
 
-Remote packages are cloned whole, so the profile's own relative include of
-`packages/dynamic-volume.yaml` still resolves. See
-[dashboard/README.md](dashboard/README.md) for the secrets you need to add and
-how to roll a new version.
+Nothing in `lib/` is a device config, and nothing in `templates/` contains
+logic. If you are wondering which file to deploy, it is always one in
+`templates/`.
 
-Use `devices/` for local CLI work, `dashboard/` for the GUI.
+The settings split three ways, which is why `lib/` has two layers: what the
+*package* does (shared by all hardware), what a *platform* requires (mic id,
+gain, vendor pin), and what a *unit* needs (name, its room). Values pass down
+through `!include` `vars:`, which are lexically scoped — they cannot collide
+with a vendor package's own substitutions.
 
-## Adding a device
+`!secret` resolves relative to the config file's own directory, so
+`secrets.yaml` must sit beside your device file, not in a parent folder.
 
-```yaml
-substitutions:
-  name: living-room-satellite      # must match the existing device, if any
-  friendly_name: Living Room Satellite
+## Adding another device
 
-packages:
-  plum: !include ../profiles/satellite1.yaml
-
-esphome:
-  name: ${name}
-  name_add_mac_suffix: false
-  friendly_name: ${friendly_name}
-
-api:
-  encryption:
-    key: !secret api_key_living_room
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-```
-
-Then calibrate it. Everything hardware-specific lives in the profile.
+Copy the same template again, give it a different `name` and its own API key,
+and calibrate it for its own room. Two units of the same hardware in different
+rooms will not share a noise floor.
 
 ## Adding a new platform
 
 Don't guess component ids — resolve them:
 
 ```bash
-esphome config devices/<device>.yaml | grep -E 'id: (.*mic|.*media_player|mww)'
+esphome config <your-device>.yaml | grep -E 'id: (.*mic|.*media_player|mww)'
 ```
 
-Write a profile binding `mic_id`, `mic_channel`, `mic_gain_factor`,
+Add a profile under `lib/profiles/` binding `mic_id`, `mic_channel`, `mic_gain_factor`,
 `media_player_id` and `wake_word_id`, then confirm the microphone binding
 matches the wake word engine's:
 
 ```bash
-esphome config devices/<new>.yaml | grep -A6 'platform: sound_level'
+esphome config <your-device>.yaml | grep -A6 'platform: sound_level'
 ```
 
 ## Known gaps

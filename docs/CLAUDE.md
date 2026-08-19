@@ -13,7 +13,7 @@ deliverable is configuration that resolves and compiles.
 
 ### Key Features
 
-- One parameterised package (`packages/dynamic-volume.yaml`) covering all
+- One parameterised package (`lib/dynamic-volume.yaml`) covering all
   hardware, rather than one file per platform
 - Per-platform profiles that pin vendor packages and bind hardware ids
 - Per-device files reduced to name, calibration value, and credentials
@@ -43,21 +43,31 @@ one.
 ## Project Structure
 
 ```
-packages/dynamic-volume.yaml   The logic. Parameterised, hardware-agnostic.
-profiles/{voice-pe,satellite1,respeaker-lite}.yaml
-                               Vendor pin + hardware binding + platform defaults.
-devices/*.yaml                 Per-unit. Also holds secrets.yaml (gitignored).
-docs/                          CALIBRATION, UPSTREAM-BUG, ARCHITECTURE, setup guides.
-scripts/validate-all.sh        Resolve every device config.
-_resources/                    Dev references. NEVER in git.
+templates/*.yaml       One per supported device. Deployable; pins a release tag.
+lib/dynamic-volume.yaml
+lib/profiles/*.yaml    Vendor pin + hardware binding + platform defaults.
+docs/                  CALIBRATION, UPSTREAM-BUG, ARCHITECTURE, setup guides.
+scripts/validate-all.sh
+_resources/            Dev references. NEVER in git.
 ```
+
+**Two categories, and the boundary matters.** `templates/` is what a user
+copies and deploys; `lib/` is implementation referenced by the templates. Do
+not add logic to a template, and do not make anything in `lib/` directly
+deployable — the whole point of the layout is that "which file do I deploy?"
+has one answer.
+
+Templates reference `lib/` over `github://` pinned to a release tag, so they
+work standalone in an ESPHome dashboard. That means **a change to `lib/` does
+not reach any device until a new tag is cut and the template bumped.**
 
 ### Special directories
 
 - `_resources/Examples/` holds the three original device configs this repo
-  replaced. `_resources/Research/` holds vendor bases pulled for diffing. Both
+  replaced, plus Plum's own deployed device files (which now live in the Home
+  Assistant dashboard rather than in git). `_resources/Research/` holds vendor bases pulled for diffing. Both
   are gitignored and exist purely for reference.
-- `devices/.esphome/` is the local package cache and build output. Gitignored.
+- `.esphome/` beside a config is the local package cache and build output. Gitignored.
 
 ## Naming Convention
 
@@ -69,7 +79,7 @@ preference to respect the ecosystem when they conflict:
   C++ identifiers
 - **Entity names**: human-readable strings, and see the constraint below
 
-Entity names in `packages/dynamic-volume.yaml` are deliberately kept identical
+Entity names in `lib/dynamic-volume.yaml` are deliberately kept identical
 to the upstream package (`Dyn. Vol. Anchor`, `Dynamic Volume`, …) so Home
 Assistant entity_ids survive the migration and existing dashboards and
 automations keep working. **Do not "tidy" these names** — renaming orphans live
@@ -99,7 +109,8 @@ pass-through → package default fallback).
 ### Validation is the test suite
 
 ```bash
-scripts/validate-all.sh            # all devices
+scripts/validate-all.sh            # templates, against their pinned tag
+scripts/validate-all.sh --local    # against the WORKING TREE (use before tagging)
 scripts/validate-all.sh --clean    # clear cache first, proves pins fetch
 ```
 
@@ -108,14 +119,14 @@ binds every id. A broken pin, a renamed vendor id, or a bad `!include` fails
 here — no flashing needed.
 
 **`esphome config` does not compile C++.** Lambdas are unchecked by it. After
-touching any lambda, run `esphome compile devices/voice-pe-01.yaml`.
+touching any lambda, run `esphome compile` on a real device config.
 
 ### After changing the microphone binding
 
 Always confirm the resolved binding matches the wake word engine:
 
 ```bash
-esphome config devices/<device>.yaml | grep -A6 'platform: sound_level'
+esphome config <your-device>.yaml | grep -A6 'platform: sound_level'
 ```
 
 `channels` and `gain_factor` must equal the device's `micro_wake_word`
@@ -124,7 +135,7 @@ microphone block. Mismatch is upstream bug 2 and is invisible without this check
 ### Do not guess component ids
 
 Resolve them from the merged config, or read the cached vendor file under
-`devices/.esphome/packages/<hash>/`. Do not search GitHub — vendor branches and
+`.esphome/packages/<hash>/`. Do not search GitHub — vendor branches and
 tags diverge, and the cache is what the build actually uses.
 
 ## Coding Conventions
@@ -228,4 +239,4 @@ branch dropped a component. Note that pinning the package does **not** pin its
 - `git pull --rebase` always (alias `git pr`)
 - Atomic, well-described commits
 - `_resources/` must never appear in `git status`
-- `devices/secrets.yaml` is gitignored; `secrets.yaml.example` is committed
+- `secrets.yaml` is gitignored wherever it lands; `templates/secrets.yaml.example` is committed

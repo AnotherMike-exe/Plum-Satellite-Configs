@@ -13,32 +13,34 @@ differ, without forking the logic three ways.
 ## 2. Project structure
 
 ```
-plum-satellite-configs/
-├── packages/
-│   └── dynamic-volume.yaml     Behaviour. Hardware-agnostic, fully parameterised.
-├── profiles/
-│   ├── voice-pe.yaml           Vendor pin + hardware binding, per platform.
+Plum-Satellite-Configs/
+├── templates/          One per supported device. Self-contained; this is what
+│   ├── voice-pe.yaml   you copy and deploy. Pins a release tag.
 │   ├── satellite1.yaml
-│   └── respeaker-lite.yaml
-├── devices/
-│   ├── *.yaml                  Per-unit identity, calibration, credentials.
-│   ├── secrets.yaml            GITIGNORED
+│   ├── respeaker-lite.yaml
 │   └── secrets.yaml.example
+├── lib/                Implementation. Never deployed directly.
+│   ├── dynamic-volume.yaml    behaviour, fully parameterised
+│   └── profiles/*.yaml        vendor pin + hardware binding, per platform
 ├── docs/
 ├── scripts/validate-all.sh
-└── _resources/                 Dev references. NOT in git.
+└── _resources/         Dev references. NOT in git.
 ```
+
+The `templates/` vs `lib/` split is deliberate: a reader should never have to
+guess which files are deployable. Templates carry no logic, and nothing in
+`lib/` is a device config.
 
 ## 3. Layering
 
 ```
-  devices/satellite1-01.yaml
+  templates/satellite1.yaml (your copy)
     substitutions: name, friendly_name, ambient_min_db
     api / wifi from !secret
             │
-            │  packages: !include
-            ▼
-  profiles/satellite1.yaml
+            │  packages: github://...@<tag>   (cloned whole, so the
+            ▼                                   relative include below works)
+  lib/profiles/satellite1.yaml
     packages:
       vendor ──────────────► github://futureproofhomes/...@v0.2.1-beta.0
       dynamic_volume ──┐        (mic, media player, wake word, LEDs, buttons…)
@@ -48,7 +50,7 @@ plum-satellite-configs/
             │          │    mic_gain_factor: "6"
             │          │    ambient_min_db: ${ambient_min_db}
             ▼          ▼
-  packages/dynamic-volume.yaml
+  lib/dynamic-volume.yaml
     substitutions:  ← defaults for anything not passed
     sound_level → filters → percentage → control law → media_player volume
 ```
@@ -209,7 +211,7 @@ moving ref with `refresh: 0s`. See README, Known gaps.
 
 ## 8. Validation
 
-`scripts/validate-all.sh` runs `esphome config` over every device file, which
+`scripts/validate-all.sh` runs `esphome config` over every template, which
 fetches every remote package, applies every substitution, and binds every id
 reference. `--clean` clears the cache first to prove the pins actually resolve.
 
@@ -219,19 +221,18 @@ It does **not** compile C++ — lambdas need `esphome compile`.
 ## 9. Security
 
 - API encryption keys and WiFi credentials via `!secret` only.
-  `devices/secrets.yaml` is gitignored; `secrets.yaml.example` documents the
-  required keys.
+  `secrets.yaml` sits beside the device file and is gitignored;
+  `templates/secrets.yaml.example` documents the required keys.
 - `!secret` resolves relative to the config file's own directory, falling back
   to the main config's directory (`yaml_util.py:604-615`). It does not walk up
-  to a repo root — hence `secrets.yaml` in `devices/`.
+  to a repo root — hence `secrets.yaml` beside the device file.
 - No secrets in profiles or packages; those are shared and intended to be
   publishable.
 
 ## 10. Future considerations
 
 - Pin `external_components` to SHAs via `!remove` plus a replacement list
-- Tag `v1.0.0` and switch `devices/` from local `!include` to a pinned
-  `github://` ref, so device files can live in an ESPHome dashboard directly
+- Measure the loud ceiling on the PE and ReSpeaker
 - Upstream the fixes to `jaapp` and `adri6412`
 - CI running `validate-all.sh` on push
 

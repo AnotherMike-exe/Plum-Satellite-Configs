@@ -118,7 +118,7 @@ tags — `sensor`, `component`, `api` — rather than by lowering the global.
 ### 2. Flash and watch
 
 ```bash
-esphome run devices/<device>.yaml
+esphome run <your-device>.yaml
 ```
 
 You want lines like:
@@ -231,7 +231,7 @@ is not running; or the media player is stuck reporting `PLAYING`.
 matches the wake word engine:
 
 ```bash
-esphome config devices/<device>.yaml | grep -A6 'platform: sound_level'
+esphome config <your-device>.yaml | grep -A6 'platform: sound_level'
 ```
 
 `channels` and `gain_factor` must match the device's `micro_wake_word`
