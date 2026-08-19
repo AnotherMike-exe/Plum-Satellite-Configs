@@ -1,0 +1,26 @@
+# Home Assistant Voice PE -- unit 01
+# Everything hardware-specific lives in profiles/voice-pe.yaml.
+
+substitutions:
+  name: home-assistant-voice-09472d
+  friendly_name: Home Assistant Voice PE - 01
+  # Quiet-room floor measured on THIS unit. See docs/CALIBRATION.md.
+  # Measured ~-35 to -40 dB at rest under the old (peak, channel 0, gain 1)
+  # setup -- RE-MEASURE, this value predates the RMS and channel/gain fixes.
+  ambient_min_db: "-42"
+
+packages:
+  plum: !include ../profiles/voice-pe.yaml
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+api:
+  encryption:
+    key: !secret api_key_voice_pe_01
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password

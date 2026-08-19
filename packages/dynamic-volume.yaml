@@ -1,0 +1,438 @@
+# ---------------------------------------------------------------------------
+# Dynamic Volume Control
+#
+# Measures ambient room noise with the `sound_level` platform and scales a
+# media player's volume to match, so the device is audible in a noisy room
+# without being jarring in a quiet one.
+#
+# Self-contained: no runtime dependency on jaapp/ha-voice-dynamic-volume or
+# adri6412/ha-voice-dynamic-volume-2025. docs/UPSTREAM-BUG.md documents the
+# six defects in those packages that this file corrects, each cited to the
+# ESPHome source that proves it.
+#
+# Do not include this file directly. Include a profile from profiles/, which
+# binds the hardware-specific ids and gain for its platform.
+#
+# ---------------------------------------------------------------------------
+# PARAMETERS
+#
+# Override via `vars:` on the !include that pulls this file in. Anything not
+# passed falls back to the default in the substitutions: block below.
+#
+#   packages:
+#     dynamic_volume: !include
+#       file: ../packages/dynamic-volume.yaml
+#       vars:
+#         mic_id: sat1_mics
+#         mic_gain_factor: "6"
+#
+# NOTE: substitution values are strings pasted verbatim into C++ lambdas, so
+# they must stand alone as valid C++. Every numeric parameter that reaches a
+# lambda is wrapped in `static_cast<float>(...)`. Never append an `f` suffix:
+# `${ambient_min_db}f` renders as `-42f`, which is not a valid literal. The
+# cast also supplies its own parentheses (so a negative value cannot glue onto
+# a preceding operator) and forces the type (so `clamp()` cannot fail template
+# deduction when a bound happens to be written as an integer).
+# ---------------------------------------------------------------------------
+
+substitutions:
+  # --- hardware binding (set by the profile, not the device) ---------------
+  # The microphone to measure. Must be a `microphone:` id in the vendor config.
+  mic_id: i2s_mics
+  # Which channel of that mic, and what gain to apply. These MUST match the
+  # device's `micro_wake_word` microphone source. sound_level defaults to
+  # channel 0 at gain 1; every target device runs mww on channel 1 at gain 4-6.
+  # This is not cosmetic: on a stereo I2S mic channel 0 may be a different
+  # capsule (or an echo-cancellation reference carrying our own output), and
+  # gain shifts the entire dBFS scale, so a noise floor calibrated at the wrong
+  # gain is meaningless.
+  mic_channel: "1"
+  mic_gain_factor: "4"
+  # The media player to drive, and the wake word engine that owns the mic.
+  media_player_id: external_media_player
+  wake_word_id: mww
+
+  # --- calibration (set per device -- see docs/CALIBRATION.md) -------------
+  # The dBFS reading that maps to 0%. `sound_level` emits dBFS: 0 dB is full
+  # scale, quiet is negative. Set this slightly below the measured quiet-room
+  # floor of THIS unit at THIS gain. Must be measured per unit; the default is
+  # only a starting guess.
+  ambient_min_db: "-55"
+  ambient_max_db: "0"
+
+  # --- timing --------------------------------------------------------------
+  # measurement_duration is the sample period for the whole chain; the two
+  # window parameters are counted in SAMPLES, so changing it rescales
+  # everything below.
+  #
+  # At the defaults (1 sample/s):
+  #   median window 5  -- rejects any transient <= 2s outright (~3s delay)
+  #   EMA alpha 0.4    -- tau = -1/ln(0.6) = 1.96s; 90% of a step at ~4.5s
+  #   publish every 3  -- a new value every 3s
+  # => ~7.5s to 90% of a step, <= 9s worst case with publish quantisation.
+  ambient_measurement_duration: 1000ms
+  ambient_median_window: "5"
+  ambient_smoothing_alpha: "0.4"
+  ambient_publish_every: "3"
+  # Settle time after playback stops before the mic is trusted again, covering
+  # speaker ring-down and room reverb. Plain integer milliseconds.
+  playback_recovery_ms: "3000"
+
+  # --- volume behaviour ---------------------------------------------------
+  # The anchor is the volume in a silent room, and it is ALWAYS in normalised
+  # 0..1 space -- both media player platforms remap 0..1 onto their own
+  # volume_min/volume_max internally, so a device's declared volume range is
+  # transparent here and these bounds are identical on every platform.
+  dv_anchor_min: "0.1"
+  dv_anchor_max: "1.0"
+  dv_anchor_default: "0.3"
+  dv_strength_default: "1.0"
+  # Expansion curve applied to the ambient percentage. Below 1.0 it gives more
+  # resolution at the quiet end, which is where a room actually sits.
+  dv_curve_exponent: "0.4"
+  # Ceiling on the computed volume, applied before the mandatory 0..1 clamp.
+  # Lower it to stop a very loud room producing a deafening result.
+  dv_output_max: "1.0"
+  # Minimum change worth applying. Every volume change is persisted to flash by
+  # the media player, so this should not be tiny.
+  dv_volume_deadband: "0.03"
+
+globals:
+  # The last volume THIS package applied. Not restored: at boot it is NAN,
+  # which serves two purposes. It forces the first real update through the
+  # deadband, and it tells the switch's turn_off_action that we have not
+  # touched the volume this session -- see the comment there.
+  - id: last_dynamic_volume_calculation
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+
+  # End of the post-playback settle window, as a millis() timestamp.
+  # A global rather than a `static` local inside the filter lambda, so the
+  # generated code stays plain and inspectable.
+  - id: dynamic_volume_busy_until
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+number:
+  # Entity names match the upstream package so that Home Assistant entity_ids
+  # survive the migration and existing dashboards and automations keep working.
+  - platform: template
+    name: "Dyn. Vol. Anchor"
+    id: dynamic_volume_anchor
+    min_value: ${dv_anchor_min}
+    max_value: ${dv_anchor_max}
+    step: 0.05
+    initial_value: ${dv_anchor_default}
+    restore_value: true
+    optimistic: true
+    icon: "mdi:volume-high"
+    unit_of_measurement: "x"
+    entity_category: config
+    on_value:
+      - script.execute: update_dynamic_volume
+
+  - platform: template
+    name: "Dyn. Vol. Strength"
+    id: dynamic_volume_strength
+    min_value: 0
+    max_value: 5
+    step: 0.1
+    initial_value: ${dv_strength_default}
+    restore_value: true
+    optimistic: true
+    icon: "mdi:volume-vibrate"
+    unit_of_measurement: "x"
+    entity_category: config
+    on_value:
+      - script.execute: update_dynamic_volume
+
+  # Live calibration knob for the noise floor.
+  #
+  # restore_value is deliberately FALSE: ${ambient_min_db} in the device YAML
+  # stays authoritative on every boot, so editing YAML and reflashing actually
+  # changes behaviour. With restore_value: true you get the classic trap where
+  # a stale restored value silently overrides the config.
+  #
+  # Sweep this while watching "Ambient Sound Level" to find the value, then
+  # bake the answer into the device file. See docs/CALIBRATION.md.
+  - platform: template
+    name: "Dyn. Vol. Noise Floor"
+    id: dynamic_volume_noise_floor
+    min_value: -90        # 16-bit full-scale RMS bottoms out near -90 dBFS
+    max_value: 0
+    step: 1
+    initial_value: ${ambient_min_db}
+    restore_value: false
+    optimistic: true
+    mode: box
+    icon: "mdi:tune"
+    unit_of_measurement: "dB"
+    entity_category: config
+    on_value:
+      - script.execute: update_dynamic_volume
+
+switch:
+  - platform: template
+    name: "Dynamic Volume"
+    id: dynamic_volume_switch
+    icon: "mdi:volume-vibrate"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    turn_on_action:
+      - script.execute: update_dynamic_volume
+    turn_off_action:
+      - lambda: |-
+          // TemplateSwitch::setup() calls turn_off() for RESTORE_DEFAULT_OFF,
+          // firing this action on EVERY boot (template_switch.cpp). It runs at
+          // setup_priority HARDWARE-2 (798), while both media player platforms
+          // are PROCESSOR (400) -- so at boot this fires BEFORE the media
+          // player has been set up, and a make_call() here would act on a
+          // half-initialised component and stomp the user's restored volume.
+          //
+          // NAN means "we have not applied a dynamic volume this session", so
+          // there is nothing of ours to undo. Bail out.
+          if (!std::isfinite(id(last_dynamic_volume_calculation))) return;
+          id(last_dynamic_volume_calculation) = NAN;
+
+          // Don't yank the volume out from under active playback.
+          const auto mp_state = id(${media_player_id})->state;
+          if (mp_state == media_player::MEDIA_PLAYER_STATE_PLAYING ||
+              mp_state == media_player::MEDIA_PLAYER_STATE_ANNOUNCING) {
+            return;
+          }
+
+          const float anchor = id(dynamic_volume_anchor).state;
+          if (!std::isfinite(anchor)) return;
+
+          ESP_LOGD("dynamic_volume", "Disabled; restoring anchor volume %.2f", anchor);
+          id(${media_player_id})
+            ->make_call()
+            .set_volume(clamp(anchor, 0.0f, 1.0f))
+            .perform();
+
+sensor:
+  # ---------------------------------------------------------------------------
+  # Ambient measurement.
+  #
+  # passive: true means we tap whatever stream micro_wake_word already has
+  # running rather than starting the microphone ourselves. If the mic is muted,
+  # readings stop -- which the guard below handles explicitly.
+  # ---------------------------------------------------------------------------
+  - platform: sound_level
+    id: ambient_sound_monitor
+    passive: true
+    measurement_duration: ${ambient_measurement_duration}
+    microphone:
+      microphone: ${mic_id}
+      # Block sequence, not [${mic_channel}] -- a substitution inside a YAML
+      # flow sequence fails to parse, because the YAML parser runs before
+      # substitution and chokes on the brace.
+      channels:
+        - ${mic_channel}
+      gain_factor: ${mic_gain_factor}
+      bits_per_sample: 16
+
+    # RMS drives the control loop: it is a true energy mean and therefore the
+    # correct statistic for a noise floor. (Peak is a transient detector --
+    # sound_level.cpp keeps a running max, so one door slam pins it for the
+    # entire measurement window.)
+    rms:
+      name: "Ambient Sound RMS"
+      id: ambient_sound_rms
+      accuracy_decimals: 1
+      entity_category: diagnostic
+      icon: "mdi:microphone-outline"
+      filters:
+        # --- 1. Validity and feedback guard. MUST run first. ----------------
+        - lambda: |-
+            const uint32_t now = millis();
+
+            // isfinite, NOT isnan. sound_level publishes NAN when the mic
+            // source is stopped, but it publishes -inf when the mic feeds
+            // digital silence: rms_db is 10*log10(sum/...) and the accumulator
+            // is reset to 0 each window, so a muted mic yields log10(0).
+            // ExponentialMovingAverageFilter guards only isnan, so a single
+            // -inf sets its accumulator to -inf permanently and the sensor is
+            // dead until reboot. -95 dBFS is below the 16-bit noise floor, so
+            // anything under it is digital silence, not a quiet room.
+            if (!std::isfinite(x) || x < -95.0f) return {};
+
+            // Feedback guard: test POSITIVELY for the two states in which our
+            // own speaker is producing sound. Testing `!= IDLE` (as the
+            // upstream package does) also blocks NONE -- the pre-setup value
+            // of the state member -- as well as PAUSED, OFF and ON, which
+            // silently disables the feature for most of the device's life.
+            const auto mp_state = id(${media_player_id})->state;
+            if (mp_state == media_player::MEDIA_PLAYER_STATE_PLAYING ||
+                mp_state == media_player::MEDIA_PLAYER_STATE_ANNOUNCING) {
+              id(dynamic_volume_busy_until) =
+                  now + static_cast<uint32_t>(${playback_recovery_ms});
+              return {};
+            }
+
+            // Post-playback settle window: speaker ring-down plus room reverb.
+            // Signed difference so millis() rollover is handled correctly.
+            if (id(dynamic_volume_busy_until) != 0 &&
+                static_cast<int32_t>(now - id(dynamic_volume_busy_until)) < 0) {
+              return {};
+            }
+
+            // Is the audio path actually live? is_running() is
+            // MicroWakeWord's own method (state_ != STOPPED). The upstream
+            // package calls is_ready(), which is Component::is_ready() and
+            // only means "setup() finished" -- true even when mww is stopped
+            // and the microphone is producing nothing.
+            if (!id(${wake_word_id}).is_running()) return {};
+
+            // Drop the sample outright rather than re-injecting the previous
+            // state as the upstream package does. Re-injecting a synthetic
+            // duplicate biases every averager downstream toward whatever the
+            // value happened to be when playback started.
+            return x;
+
+        # --- 2. Transient rejection. ----------------------------------------
+        # A median cannot be moved by fewer than half its window, so an event
+        # shorter than half the window is rejected outright instead of being
+        # smeared across the average. This is what stops a door slam from
+        # pumping the volume, and it is why the latency budget below can be
+        # spent on responsiveness rather than on averaging slams away.
+        - median:
+            window_size: ${ambient_median_window}
+            send_every: 1
+            send_first_at: 1
+
+        # --- 3. Smoothing. ---------------------------------------------------
+        - exponential_moving_average:
+            alpha: ${ambient_smoothing_alpha}
+            send_every: ${ambient_publish_every}
+            send_first_at: 1
+
+      # Derive the percentage the instant a smoothed dB value lands, rather
+      # than polling it from a second sensor on its own clock. The upstream
+      # package lost most of its ~50s latency exactly here: a second template
+      # sensor re-read the first sensor's already-published state on a 5s poll
+      # and re-applied an identical filter chain.
+      on_value:
+        - sensor.template.publish:
+            id: ambient_sound_level
+            state: !lambda |-
+              float floor_db = id(dynamic_volume_noise_floor).state;
+              if (!std::isfinite(floor_db)) {
+                floor_db = static_cast<float>(${ambient_min_db});
+              }
+
+              const float ceil_db = static_cast<float>(${ambient_max_db});
+              float span = ceil_db - floor_db;
+              if (span < 1.0f) span = 1.0f;   // guard a floor set above the ceiling
+
+              const float pct = clamp((x - floor_db) / span * 100.0f, 0.0f, 100.0f);
+              ESP_LOGD("ambient_sound", "RMS %.1f dB (floor %.1f dB) -> %.1f%%",
+                       x, floor_db, pct);
+              return pct;
+        - script.execute: update_dynamic_volume
+
+    # Diagnostic only. Deliberately NOT feedback-guarded beyond validity: this
+    # is "the loudest thing this mic heard recently", including our own output,
+    # which is what you want when checking for clipping or confirming the
+    # guard is doing its job.
+    peak:
+      name: "Ambient Sound Peak"
+      id: ambient_sound_peak
+      accuracy_decimals: 1
+      entity_category: diagnostic
+      disabled_by_default: true
+      icon: "mdi:waveform"
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x) || x < -95.0f) return {};
+            return x;
+        - max:
+            window_size: 10
+            send_every: 10
+
+  # Published by the on_value trigger above, never polled.
+  - platform: template
+    name: "Ambient Sound Level"
+    id: ambient_sound_level
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    state_class: "measurement"
+    icon: "mdi:microphone-outline"
+    update_interval: never
+
+  # The control loop's actual output. More useful for debugging than the
+  # curved-percentage sensor it replaces, because it shows what was applied.
+  - platform: template
+    name: "Dyn. Vol. Target"
+    id: dynamic_volume_target
+    unit_of_measurement: "x"
+    accuracy_decimals: 3
+    state_class: "measurement"
+    entity_category: diagnostic
+    disabled_by_default: true
+    icon: "mdi:volume-high"
+    update_interval: never
+
+script:
+  # Event-driven: runs when a new smoothed level lands, when a tuning number
+  # changes, and when the switch is turned on. No `interval:` block is needed
+  # -- during playback the guard suppresses publishes, so this correctly does
+  # not run at all.
+  - id: update_dynamic_volume
+    mode: single
+    then:
+      - lambda: |-
+          // The optimistic template switch IS the enabled state. The upstream
+          // package kept a parallel `dynamic_volume_enabled` global, which
+          // could desync from the switch and raced its own setup order.
+          if (!id(dynamic_volume_switch).state) return;
+
+          const auto mp_state = id(${media_player_id})->state;
+          if (mp_state == media_player::MEDIA_PLAYER_STATE_PLAYING ||
+              mp_state == media_player::MEDIA_PLAYER_STATE_ANNOUNCING) {
+            return;  // measurement is stale during playback; don't act on it
+          }
+
+          const float ambient_level = id(ambient_sound_level).state;
+          if (!std::isfinite(ambient_level)) return;
+
+          const float anchor   = id(dynamic_volume_anchor).state;
+          const float strength = id(dynamic_volume_strength).state;
+          if (!std::isfinite(anchor) || !std::isfinite(strength)) return;
+
+          // Perceptual curve: exponent < 1 spreads the quiet end of the range.
+          const float curved = powf(clamp(ambient_level, 0.0f, 100.0f) / 100.0f,
+                                    static_cast<float>(${dv_curve_exponent}));
+
+          float target = anchor * (1.0f + curved * strength);
+          target = clamp(target, 0.0f, static_cast<float>(${dv_output_max}));
+          // Mandatory, not cosmetic: MediaPlayerCall::validate_() discards an
+          // out-of-range volume entirely (it logs a warning and resets the
+          // value, so no volume change happens at all).
+          target = clamp(target, 0.0f, 1.0f);
+
+          // Deadband. Every applied change is persisted to flash by the media
+          // player, so don't chatter. Compare against the last value WE set.
+          // Use fabsf, not abs: a bare abs() on a float can resolve to the
+          // integer overload and truncate, silently widening this to 1.0 and
+          // suppressing every update.
+          const float last = id(last_dynamic_volume_calculation);
+          if (std::isfinite(last) &&
+              fabsf(target - last) < static_cast<float>(${dv_volume_deadband})) {
+            return;
+          }
+
+          id(last_dynamic_volume_calculation) = target;
+          id(dynamic_volume_target).publish_state(target);
+          id(${media_player_id})->make_call().set_volume(target).perform();
+
+          ESP_LOGD("dynamic_volume",
+                   "ambient %.1f%% -> curved %.3f, strength %.2f, anchor %.2f => volume %.3f",
+                   ambient_level, curved, strength, anchor, target);
+
+# NOTE: this package deliberately does not set `logger:`. The upstream package
+# does, which silently overrides the level a device file asked for.
+# Calibration logging belongs in the device config -- see docs/CALIBRATION.md.

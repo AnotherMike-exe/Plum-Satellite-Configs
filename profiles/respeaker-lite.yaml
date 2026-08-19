@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# Profile: formatBCE ReSpeaker Lite
+#
+# Vendor base + dynamic volume, with the hardware binding for this platform.
+# Device files should include this and set only name / friendly_name /
+# ambient_min_db.
+#
+# Verified against formatBCE/Respeaker-Lite-ESPHome-integration @ 3136cf79:
+#   microphone id .... i2s_mics
+#   media player ..... external_media_player (speaker_source, full 0 - 1)
+#   wake word ........ mww, channels: 1, gain_factor: 4
+#   min_version ...... 2026.6.0
+#
+# This repo has no tags or releases, so the pin is a commit SHA. Bump it
+# deliberately; there is no upstream release cadence to follow.
+#
+# Adopting this base replaces a locally forked 2025.5.0 monolith. It brings
+# sendspin, IPv6, and a proper `datetime:` alarm entity.
+#
+# MIGRATION: the old fork exposed a custom `set_alarm_time` API action. This
+# base replaces it with an `Alarm time` datetime entity, so any Home Assistant
+# automation calling esphome.<device>_set_alarm_time must be updated. Upstream
+# ships a blueprint for the new pattern.
+# ---------------------------------------------------------------------------
+
+substitutions:
+  # Overridable by the device file. Never measured on this hardware -- the
+  # mic/ADC path differs from the PE, so PE values do not transfer.
+  ambient_min_db: "-50"
+
+packages:
+  vendor:
+    url: https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration
+    ref: 3136cf79238184e06bdf11e9b2105c58a16f6714
+    refresh: 1d
+    files:
+      - config/common/respeaker-satellite-base.yaml
+
+  dynamic_volume: !include
+    file: ../packages/dynamic-volume.yaml
+    vars:
+      mic_id: i2s_mics
+      mic_channel: "1"
+      mic_gain_factor: "4"
+      media_player_id: external_media_player
+      wake_word_id: mww
+      ambient_min_db: ${ambient_min_db}
+      # The anchor is normalised 0..1 on every platform: both media player
+      # platforms remap 0..1 onto their own volume_min/volume_max internally
+      # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),
+      # so this device's declared volume range is transparent here.
+      dv_anchor_min: "0.1"
+      dv_anchor_max: "1.0"
+      dv_anchor_default: "0.3"
+
+# Some vendor bases (Satellite1) declare components such as improv_serial that
+# hard-require `logger:`, so every profile provides one. `logger:` is a plain
+# dict key and merges cleanly, so a device file can override any of this
+# without !extend -- see docs/CALIBRATION.md for the debug settings to use
+# while measuring a unit's noise floor.
+# `initial_level` is set alongside `level` because some bases (formatBCE) ship
+# `initial_level: debug`; dict-merging only our `level: INFO` on top leaves
+# their initial_level behind and ESPHome rejects an initial level more severe
+# than the global one.
+logger:
+  level: INFO
+  initial_level: INFO

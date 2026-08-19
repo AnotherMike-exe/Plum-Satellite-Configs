@@ -1,0 +1,69 @@
+# ---------------------------------------------------------------------------
+# Profile: FutureProofHomes Satellite1
+#
+# Vendor base + dynamic volume, with the hardware binding for this platform.
+# Device files should include this and set only name / friendly_name /
+# ambient_min_db.
+#
+# Verified against futureproofhomes/satellite1-esphome @ v0.2.1-beta.0:
+#   microphone id .... sat1_mics (custom `satellite1` mic platform, post-XMOS)
+#   media player ..... external_media_player (speaker_source, 0.1 - 1.0)
+#   wake word ........ mww, channels: 1, gain_factor: 6   <-- differs from PE
+#   min_version ...... 2026.7.0   <-- tightest constraint in this repo
+#
+# Pinned to a tag rather than `ref: develop`. Tracking develop with a short
+# refresh already caused one silent breakage when an upstream branch dropped a
+# component this config depended on.
+#
+# sendspin is already active: satellite1.base.yaml itself does
+# `sendspin: !include common/sendspin.yaml`. The `files:` list below names
+# entry points only -- the base pulls in the rest of common/ on its own.
+#
+# NOTE: the XMOS front-end applies its own AGC and noise suppression, so
+# sat1_mics is a partly level-normalised stream. Expect its usable ambient
+# range to be narrower than the PE's; calibrate accordingly.
+# ---------------------------------------------------------------------------
+
+substitutions:
+  # Overridable by the device file. Re-measure after switching to RMS -- the
+  # previously validated -55 was calibrated against peak on the wrong channel.
+  ambient_min_db: "-55"
+
+packages:
+  vendor:
+    url: https://github.com/futureproofhomes/satellite1-esphome
+    ref: v0.2.1-beta.0
+    refresh: 1d
+    files:
+      - config/satellite1.base.yaml
+      - config/common/components.external.yaml
+
+  dynamic_volume: !include
+    file: ../packages/dynamic-volume.yaml
+    vars:
+      mic_id: sat1_mics
+      mic_channel: "1"
+      mic_gain_factor: "6"
+      media_player_id: external_media_player
+      wake_word_id: mww
+      ambient_min_db: ${ambient_min_db}
+      # The anchor is normalised 0..1 on every platform: both media player
+      # platforms remap 0..1 onto their own volume_min/volume_max internally
+      # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),
+      # so this device's declared volume range is transparent here.
+      dv_anchor_min: "0.1"
+      dv_anchor_max: "1.0"
+      dv_anchor_default: "0.3"
+
+# Some vendor bases (Satellite1) declare components such as improv_serial that
+# hard-require `logger:`, so every profile provides one. `logger:` is a plain
+# dict key and merges cleanly, so a device file can override any of this
+# without !extend -- see docs/CALIBRATION.md for the debug settings to use
+# while measuring a unit's noise floor.
+# `initial_level` is set alongside `level` because some bases (formatBCE) ship
+# `initial_level: debug`; dict-merging only our `level: INFO` on top leaves
+# their initial_level behind and ESPHome rejects an initial level more severe
+# than the global one.
+logger:
+  level: INFO
+  initial_level: INFO

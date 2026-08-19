@@ -1,0 +1,26 @@
+# FutureProofHomes Satellite1 -- unit 02
+# Everything hardware-specific lives in profiles/satellite1.yaml.
+
+substitutions:
+  # PLACEHOLDER: replace with this unit's real ESPHome node name.
+  name: satellite1-02
+  friendly_name: FutureProofHomes - Satellite1 - 02
+  # NOT YET MEASURED on this unit. See docs/CALIBRATION.md.
+  # Placeholder carried over from unit 01 -- calibrate before trusting it.
+  ambient_min_db: "-55"
+
+packages:
+  plum: !include ../profiles/satellite1.yaml
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+api:
+  encryption:
+    key: !secret api_key_satellite1_02
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password

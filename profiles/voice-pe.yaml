@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Profile: Home Assistant Voice PE (Nabu Casa)
+#
+# Vendor base + dynamic volume, with the hardware binding for this platform.
+# Device files should include this and set only name / friendly_name /
+# ambient_min_db.
+#
+# Verified against esphome/home-assistant-voice-pe @ 26.6.0:
+#   microphone id .... i2s_mics
+#   media player ..... external_media_player (speaker_source, 0.4 - 0.85)
+#   wake word ........ mww, channels: 1, gain_factor: 4
+#   min_version ...... 2026.5.0
+# ---------------------------------------------------------------------------
+
+substitutions:
+  # Overridable by the device file. Measure this per unit -- do not ship the
+  # default. See docs/CALIBRATION.md.
+  ambient_min_db: "-42"
+
+packages:
+  vendor: github://esphome/home-assistant-voice-pe/home-assistant-voice.yaml@26.6.0
+
+  dynamic_volume: !include
+    file: ../packages/dynamic-volume.yaml
+    vars:
+      mic_id: i2s_mics
+      mic_channel: "1"
+      mic_gain_factor: "4"
+      media_player_id: external_media_player
+      wake_word_id: mww
+      ambient_min_db: ${ambient_min_db}
+      # The anchor is normalised 0..1 on every platform: both media player
+      # platforms remap 0..1 onto their own volume_min/volume_max internally
+      # (speaker_media_player.cpp:599, speaker_source_media_player.cpp:813),
+      # so this device's declared volume range is transparent here.
+      dv_anchor_min: "0.1"
+      dv_anchor_max: "1.0"
+      dv_anchor_default: "0.3"
+
+# Some vendor bases (Satellite1) declare components such as improv_serial that
+# hard-require `logger:`, so every profile provides one. `logger:` is a plain
+# dict key and merges cleanly, so a device file can override any of this
+# without !extend -- see docs/CALIBRATION.md for the debug settings to use
+# while measuring a unit's noise floor.
+# `initial_level` is set alongside `level` because some bases (formatBCE) ship
+# `initial_level: debug`; dict-merging only our `level: INFO` on top leaves
+# their initial_level behind and ESPHome rejects an initial level more severe
+# than the global one.
+logger:
+  level: INFO
+  initial_level: INFO
