@@ -29,15 +29,15 @@ wifi:
 
 # Uncomment while calibrating this unit's noise floor, then comment out again.
 # See docs/CALIBRATION.md.
-logger:
-  level: DEBUG
-  initial_level: DEBUG
-  logs:
-    ambient_sound: DEBUG
-    dynamic_volume: DEBUG
-    # Global level is the CEILING -- a per-tag level cannot be more verbose
-    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
-    # noisy tags here, not by lowering the global level.
-    sensor: WARN
-    component: WARN
-    api: WARN
+#logger:
+#  level: DEBUG
+#  initial_level: DEBUG
+#  logs:
+#    ambient_sound: DEBUG
+#    dynamic_volume: DEBUG
+#    # Global level is the CEILING -- a per-tag level cannot be more verbose
+#    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
+#    # noisy tags here, not by lowering the global level.
+#    sensor: WARN
+#    component: WARN
+#    api: WARN

@@ -9,7 +9,6 @@ substitutions:
   # First-boot defaults only; the device stores its own calibration.
   # Fully calibrated 2026-08-19: quiet -72.3 dB, active -67.8 to -63.6 dB.
   ambient_min_db: "-71"
-
   ambient_max_db: "-62"
 
 packages:
