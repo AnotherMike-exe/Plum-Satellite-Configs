@@ -170,19 +170,23 @@ scoped — they cannot collide with a vendor package's own substitutions.
 `!secret` resolves relative to the config file's directory, which is why
 `secrets.yaml` lives in `devices/`.
 
-### Running it from Home Assistant instead
+### Managing devices from Home Assistant
 
-Device files use `!include ../profiles/...`, so they only work inside a
-checkout. To manage a device from the HA ESPHome dashboard, point it at the
-published package instead:
+`devices/*.yaml` use `!include ../profiles/...`, so they only work inside a
+checkout. **[`dashboard/`](dashboard/) holds ready-to-paste equivalents** for the
+ESPHome Device Builder add-on, pinned to a release tag:
 
 ```yaml
 packages:
-  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@main
+  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@v1.0.0
 ```
 
-Remote packages are cloned whole, so the profile's own relative include still
-resolves.
+Remote packages are cloned whole, so the profile's own relative include of
+`packages/dynamic-volume.yaml` still resolves. See
+[dashboard/README.md](dashboard/README.md) for the secrets you need to add and
+how to roll a new version.
+
+Use `devices/` for local CLI work, `dashboard/` for the GUI.
 
 ## Adding a device
 
@@ -255,7 +259,6 @@ headroom — worth watching if you add wake word models.
 ## Roadmap
 
 - [ ] Measure the loud ceiling on the PE and ReSpeaker (floors are done)
-- [ ] Tag `v1.0.0`; point `devices/` at the tag rather than local `!include`
 - [ ] Offer the fixes upstream to `jaapp` and `adri6412`
 - [ ] Pin `external_components` to SHAs
 

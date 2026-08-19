@@ -1,0 +1,41 @@
+# formatBCE ReSpeaker Lite -- unit 01
+# Paste into /config/esphome/ in the ESPHome Device Builder add-on.
+# Shared logic comes from github://AnotherMike-exe/Plum-Satellite-Configs @ v1.0.0.
+
+substitutions:
+  # Must match the existing device in Home Assistant. The underscore is
+  # deliberate -- changing it orphans every entity. Do not change.
+  name: respeaker_lite-formatbce
+  friendly_name: ReSpeaker Lite - formatBCE
+  # First-boot defaults only; the device stores its own calibration.
+  # Floor measured 2026-08-19: quiet room -76.1 dB mean, sd 1.11.
+  ambient_min_db: "-74.0"
+  # NOT YET MEASURED -- run Calibrate Loud Ceiling with something playing.
+  ambient_max_db: "0"
+
+packages:
+  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/respeaker-lite.yaml@v1.0.0
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+api:
+  encryption:
+    key: !secret api_key_respeaker_lite_01
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Uncomment while calibrating, then comment out again.
+#logger:
+#  level: DEBUG
+#  initial_level: DEBUG
+#  logs:
+#    ambient_sound: DEBUG
+#    dynamic_volume: DEBUG
+#    sensor: WARN
+#    component: WARN
+#    api: WARN
