@@ -11,9 +11,10 @@ substitutions:
   # every existing entity, and changes the mDNS hostname.
   name: respeaker_lite-formatbce
   friendly_name: ReSpeaker Lite - formatBCE
-  # NEVER MEASURED on this hardware. The mic/ADC path differs from the PE, so
-  # PE values do not transfer. Calibrate before trusting the sensor.
-  ambient_min_db: "-50"
+  # MEASURED 2026-08-19: quiet room -76.1 dB mean (sd 1.11), so the floor is
+  # mean + 2*sd quantised to the 0.25 grid. The old -50 default was 26 dB above
+  # the real floor. Ceiling still unmeasured -- needs a loud sample in the room.
+  ambient_min_db: "-74.0"
 
 packages:
   plum: !include ../profiles/respeaker-lite.yaml

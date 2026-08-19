@@ -24,10 +24,11 @@
 # ---------------------------------------------------------------------------
 
 substitutions:
-  # NOT YET MEASURED. Different mic/ADC path from the PE; do not assume PE
-  # values transfer. Check whether this stream is AGC'd like the Satellite1's
-  # before trusting ambient_max_db: 0.
-  ambient_min_db: "-50"
+  # Floor MEASURED 2026-08-19 on unit 01: quiet room -76.1 dB mean, sd 1.11.
+  # Raw I2S like the PE but a different mic/ADC path -- it lands ~4.5 dB above
+  # the PE and ~5 dB below the Satellite1, which is why none of the three can
+  # share a value. Ceiling NOT yet measured; run Calibrate Loud Ceiling.
+  ambient_min_db: "-74.0"
   ambient_max_db: "0"
   dv_curve_exponent: "0.4"
 

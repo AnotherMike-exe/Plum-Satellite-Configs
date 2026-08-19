@@ -125,7 +125,7 @@ Calibration results persist across reboots, which means the YAML values apply on
 | Vendor pin | `26.6.0` | `v0.2.1-beta.0` | `3136cf79` |
 | Microphone | `i2s_mics` | `sat1_mics` | `i2s_mics` |
 | Wake word gain | 4 | **6** | 4 |
-| Calibrated | floor only | **yes** | — |
+| Calibrated | floor only | **yes** | floor only |
 
 **Minimum ESPHome is 2026.7.0**, set by the Satellite1 vendor base.
 
@@ -138,13 +138,17 @@ That mismatch is [bug 2](docs/UPSTREAM-BUG.md).
 theoretical. The Satellite1's XMOS front-end applies AGC and noise suppression;
 the PE captures raw I2S:
 
-| | Satellite1 | HA Voice PE |
-|---|---|---|
-| Quiet floor | −71.4 dB | **−78.5 dB** |
-| Sample spread (σ) | ~0.35 dB | **1.87 dB** |
+All three measured in the same house on the same day:
 
-Seven dB apart, with five times the sample-to-sample variation on the PE. A
-floor copied across would be badly wrong in either direction.
+| | Satellite1 | ReSpeaker Lite | HA Voice PE |
+|---|---|---|---|
+| Front end | XMOS AGC | raw I2S | raw I2S |
+| Quiet floor | **−71.25 dB** | **−74.0 dB** | **−78.5 dB** |
+| Sample spread (σ) | ~0.35 dB | 1.11 dB | 1.87 dB |
+
+Seven dB of spread across three devices, and the two *without* an AGC still
+differ by 4.5 dB because their mic and ADC paths differ. No value transfers
+between platforms — measure each one.
 
 ---
 
@@ -243,15 +247,14 @@ All three build from the current source on ESPHome 2026.7.4:
 |---|---|---|---|
 | HA Voice PE | yes | RAM 44.9%, Flash 35.3% of 8 MB | **yes, floor calibrated** |
 | Satellite1 | yes | RAM 46.5%, Flash 36.0% of 8 MB | **yes, calibrated** |
-| ReSpeaker Lite | yes | RAM 44.9%, Flash 71.2% of 3.9 MB | not yet |
+| ReSpeaker Lite | yes | RAM 44.9%, Flash 71.2% of 3.9 MB | **yes, floor calibrated** |
 
 The ReSpeaker partition is half the size of the others, so it has the least
 headroom — worth watching if you add wake word models.
 
 ## Roadmap
 
-- [ ] Measure the loud ceiling on the PE (floor is done)
-- [ ] Calibrate the ReSpeaker
+- [ ] Measure the loud ceiling on the PE and ReSpeaker (floors are done)
 - [ ] Tag `v1.0.0`; point `devices/` at the tag rather than local `!include`
 - [ ] Offer the fixes upstream to `jaapp` and `adri6412`
 - [ ] Pin `external_components` to SHAs
