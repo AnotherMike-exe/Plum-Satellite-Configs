@@ -6,8 +6,11 @@
 # action is gone, replaced by an `Alarm time` datetime entity.
 
 substitutions:
-  name: respeaker-lite-formatbce
-  friendly_name: ReSpeaker Lite - 01
+  # Underscore is deliberate and must not be 'tidied': this is the live node
+  # name. Changing it registers a NEW device in Home Assistant, orphaning
+  # every existing entity, and changes the mDNS hostname.
+  name: respeaker_lite-formatbce
+  friendly_name: ReSpeaker Lite - formatBCE
   # NEVER MEASURED on this hardware. The mic/ADC path differs from the PE, so
   # PE values do not transfer. Calibrate before trusting the sensor.
   ambient_min_db: "-50"
@@ -27,3 +30,12 @@ api:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+# Uncomment while calibrating this unit's noise floor, then comment out again.
+# Keep the global level at INFO -- DEBUG globally buries these two tags.
+# See docs/CALIBRATION.md.
+#logger:
+#  level: INFO
+#  logs:
+#    ambient_sound: DEBUG
+#    dynamic_volume: DEBUG

@@ -72,9 +72,22 @@ Three layers, because the parameters split three ways: what the *package* does
 (name, noise floor). Parameters pass down via `!include` `vars:`, which are
 lexically scoped — they do not leak into or out of global `substitutions:`.
 
-`devices/` mirrors an ESPHome dashboard directory, so a device file drops into
-`/config/esphome/` unmodified. `!secret` resolves relative to the config file's
-own directory, which is why `secrets.yaml` lives in `devices/` and not the root.
+`!secret` resolves relative to the config file's own directory, which is why
+`secrets.yaml` lives in `devices/` and not the repo root.
+
+**Device files are not yet standalone.** They use `!include ../profiles/...`,
+so they only work inside a checkout of this repo — copying one alone into
+`/config/esphome/` fails. To manage a device from the Home Assistant ESPHome
+dashboard, swap the local include for the published package:
+
+```yaml
+packages:
+  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@main
+```
+
+Remote packages are cloned whole, so the profile's own relative include of
+`packages/dynamic-volume.yaml` still resolves. Pin `@main` to a tag once
+`v1.0.0` is cut.
 
 ## Supported hardware
 
@@ -123,7 +136,7 @@ commit SHA and must be bumped by hand.
 
 ## Build status
 
-All four device configs resolve from a cleared package cache, and all three
+All three device configs resolve from a cleared package cache, and all three
 platforms compile to firmware on ESPHome 2026.7.4:
 
 | Target | RAM | Flash |
@@ -139,7 +152,7 @@ No unit has been flashed or calibrated yet.
 
 ## Roadmap
 
-- [ ] Calibrate all four units and record the measured floors
+- [ ] Calibrate all three units and record the measured floors
 - [ ] Tag `v1.0.0` once validated on one unit per platform; point `devices/` at
       the tag rather than local `!include`
 - [ ] Upstream the dB-scaling and guard fixes to `jaapp` and `adri6412`
