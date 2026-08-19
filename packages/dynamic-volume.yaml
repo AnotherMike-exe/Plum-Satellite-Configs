@@ -5,10 +5,16 @@
 # media player's volume to match, so the device is audible in a noisy room
 # without being jarring in a quiet one.
 #
-# Self-contained: no runtime dependency on jaapp/ha-voice-dynamic-volume or
-# adri6412/ha-voice-dynamic-volume-2025. docs/UPSTREAM-BUG.md documents the
-# six defects in those packages that this file corrects, each cited to the
-# ESPHome source that proves it.
+# CREDIT: the design here -- an anchor volume scaled by a strength factor
+# against a measured ambient level, exposed as ESPHome template entities --
+# originates with jaapp/ha-voice-dynamic-volume and its fork
+# adri6412/ha-voice-dynamic-volume-2025. Entity names are kept identical to
+# theirs so that migrating units keep their Home Assistant entity ids.
+#
+# This is a reimplementation, not a copy: no code from either repository is
+# included and there is no runtime dependency on them. It corrects six defects
+# that made the feature silently inert, each cited to the ESPHome source that
+# proves it in docs/UPSTREAM-BUG.md.
 #
 # Do not include this file directly. Include a profile from profiles/, which
 # binds the hardware-specific ids and gain for its platform.

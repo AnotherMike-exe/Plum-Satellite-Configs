@@ -18,6 +18,8 @@ deliverable is configuration that resolves and compiles.
 - Per-platform profiles that pin vendor packages and bind hardware ids
 - Per-device files reduced to name, calibration value, and credentials
 - Correct dBFS handling, transient rejection, and a working playback guard
+- Guided in-firmware calibration: two Home Assistant buttons measure the room
+  and write the dB bounds themselves
 
 ### Project Context
 
@@ -158,10 +160,41 @@ digital silence, and ESPHome's averaging filters only guard `isnan`, so a single
 - **`logger:` is a plain dict and merges cleanly**, but only per-key. Setting
   `level:` on top of a vendor's `initial_level: debug` leaves their
   `initial_level` behind and ESPHome rejects the combination. Set both.
+- **The global `logger.level` is a CEILING, not a default.** ESPHome refuses a
+  per-tag level more verbose than the global one, so `logs: {ambient_sound:
+  DEBUG}` requires `level: DEBUG` globally. Quiet the output by *raising* noisy
+  tags (`sensor`, `component`, `api` to `WARN`), never by lowering the global.
 - **`substitutions:` configure nothing by existing** — they only act where
   referenced as `${...}`. A `logger:`-shaped block nested under
   `substitutions:` silently does nothing. This was live in the original
   Satellite1 config.
+
+### Home Assistant number entities must land on the step grid
+
+HA requires `(value - min)` to be an exact multiple of `step`, and the check is
+strict. `0.1` is not representable in binary floating point, so a *computed*
+value like `-71.4` arrives as `-71.400001525878906` and the field reports
+"enter a valid value" the moment it is focused.
+
+Two rules follow, and both are needed:
+
+- Any number whose value is **computed** rather than user-picked must use a step
+  that is a negative power of two (`0.25`, `0.5`), so every grid point is exact.
+- Quantise the computed value onto that grid before publishing —
+  `roundf(v * 4.0f) / 4.0f` for a 0.25 step.
+
+`Dyn. Vol. Anchor` and `Dyn. Vol. Strength` keep non-power-of-two steps and are
+fine: they only ever hold user-set grid values, whose residual error is ~1e-7
+and within browser tolerance. The bug only bites on computed values.
+
+### Calibration bounds are restored, so YAML is a first-boot default
+
+`Dyn. Vol. Noise Floor` and `Dyn. Vol. Loud Ceiling` are `restore_value: true`,
+because a guided calibration that evaporated on power loss would be pointless.
+The consequence: editing `ambient_min_db` / `ambient_max_db` in YAML and
+reflashing appears to do nothing on a unit that has already been calibrated.
+The **Reset Calibration** button is the escape hatch. Do not "fix" this by
+flipping `restore_value` back.
 
 ### Vendor pins
 
@@ -172,9 +205,12 @@ branch dropped a component. Note that pinning the package does **not** pin its
 
 ## Known Issues & Gotchas
 
-- **Calibration is mandatory and not done.** No shipped `ambient_min_db` is
-  measured. The Satellite1's old `-55` is stale — it was calibrated against
-  `peak` on channel 0 at gain 1; this package reads `rms` on channel 1 at gain 6.
+- **Only the Satellite1 is calibrated.** Measured 2026-08-19: quiet room
+  -72.3 dB, active -67.8 median / -63.6 loudest, so `ambient_min_db: -71`,
+  `ambient_max_db: -62`, `dv_curve_exponent: 0.7`. Its usable range is only
+  ~8.7 dB because the XMOS front-end applies AGC and noise suppression — do NOT
+  carry these numbers to the PE or ReSpeaker, which capture raw I2S and should
+  use much more of the dBFS scale.
 - **`external_components` float on moving refs** inside pinned vendor packages.
 - **formatBCE has no tags**, so its pin is a bare SHA needing manual bumps.
 - **ReSpeaker migration**: adopting the upstream base drops the old fork's

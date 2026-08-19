@@ -128,7 +128,54 @@ noticeably and a 5-wide median not at all. Splitting outlier rejection from
 smoothing lets the latency budget go to responsiveness instead of to averaging
 slams away.
 
-## 5. Hardware abstraction
+## 5. Guided calibration
+
+The dB window mapped onto 0-100% is not a compile-time constant. Both bounds are
+live `number` entities, and two `button` entities measure the room and write
+them.
+
+```
+  [Calibrate Quiet Floor]        [Calibrate Loud Ceiling]
+            │                              │
+            └────────► dv_calibrate(mode) ◄┘
+                            │
+              sets dv_cal_mode, zeroes accumulators
+                            │
+                  ┌─────────┴─────────┐
+                  │  60s capture       │   the rms sensor's on_value trigger
+                  │  window            │   adds each FILTERED sample to
+                  └─────────┬─────────┘   n / sum / sumsq
+                            │
+              mean + sigma*stddev, quantised to 0.25
+                            │
+                            ▼
+       Dyn. Vol. Noise Floor   or   Dyn. Vol. Loud Ceiling
+                            │
+                            ▼
+              Dyn. Vol. Calibration Status (text)
+```
+
+Three decisions worth keeping:
+
+- **Sample the filtered RMS, not the raw sensor.** The accumulator sits on the
+  sensor's `on_value`, downstream of the median and EMA stages, so transients
+  are already suppressed before they can bias a capture.
+- **`mean + sigma*stddev`, not min/max.** A raw max would let one cough during a
+  quiet capture pin the floor to the cough. Two sigma covers ~98% of a normal
+  distribution, which is the right semantics for "anything this quiet counts as
+  silence".
+- **Quantise to the number's 0.25 step.** Home Assistant rejects a value that is
+  not an exact multiple of the step, and 0.25 is a negative power of two so
+  every grid point is exactly representable. See docs/CLAUDE.md.
+
+Fewer than 5 samples aborts with a diagnostic rather than writing a bogus bound.
+The usual cause is the loud sample being played through the device's own
+speaker, where the feedback guard correctly discards every reading.
+
+Both bounds are `restore_value: true`, so a calibration survives reboot and the
+YAML values are first-boot defaults. `Reset Calibration` restores them.
+
+## 6. Hardware abstraction
 
 Everything platform-specific is a profile parameter:
 
@@ -147,7 +194,7 @@ a normalised 0–1 volume onto their own range internally
 device's declared range is transparent and the anchor means the same thing
 everywhere.
 
-## 6. External dependencies
+## 7. External dependencies
 
 | Repo | Pin | Provides |
 |---|---|---|
@@ -159,7 +206,7 @@ All pinned; none tracks a moving branch. **Caveat:** pinning a package freezes
 its YAML, not its `external_components`, which each vendor declares against a
 moving ref with `refresh: 0s`. See README, Known gaps.
 
-## 7. Validation
+## 8. Validation
 
 `scripts/validate-all.sh` runs `esphome config` over every device file, which
 fetches every remote package, applies every substitution, and binds every id
@@ -168,7 +215,7 @@ reference. `--clean` clears the cache first to prove the pins actually resolve.
 This catches broken pins, renamed vendor ids, bad includes, and merge conflicts.
 It does **not** compile C++ — lambdas need `esphome compile`.
 
-## 8. Security
+## 9. Security
 
 - API encryption keys and WiFi credentials via `!secret` only.
   `devices/secrets.yaml` is gitignored; `secrets.yaml.example` documents the
@@ -179,7 +226,7 @@ It does **not** compile C++ — lambdas need `esphome compile`.
 - No secrets in profiles or packages; those are shared and intended to be
   publishable.
 
-## 9. Future considerations
+## 10. Future considerations
 
 - Pin `external_components` to SHAs via `!remove` plus a replacement list
 - Tag `v1.0.0` and switch `devices/` from local `!include` to a pinned
@@ -187,7 +234,7 @@ It does **not** compile C++ — lambdas need `esphome compile`.
 - Upstream the fixes to `jaapp` and `adri6412`
 - CI running `validate-all.sh` on push
 
-## 10. Glossary
+## 11. Glossary
 
 - **dBFS** — decibels relative to full scale. `0 dB` is the loudest the ADC can
   represent; quiet is negative. What `sound_level` emits.
@@ -199,3 +246,15 @@ It does **not** compile C++ — lambdas need `esphome compile`.
   2026.7.4, active on all three platforms.
 - **mww** — `micro_wake_word`, the on-device wake word engine. It owns the
   microphone stream that `sound_level` taps passively.
+
+---
+
+## 12. Credits
+
+The dynamic volume design implemented here — an anchor volume scaled by a
+strength factor against a measured ambient level — originates with
+[jaapp/ha-voice-dynamic-volume](https://github.com/jaapp/ha-voice-dynamic-volume)
+and its fork
+[adri6412/ha-voice-dynamic-volume-2025](https://github.com/adri6412/ha-voice-dynamic-volume-2025).
+The device firmware this builds on is by ESPHome / Nabu Casa, FutureProofHomes
+and formatBCE. Full attribution is in the project README.

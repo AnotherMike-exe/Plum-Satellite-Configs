@@ -1,43 +1,184 @@
-# plum-satellite-configs
+# Plum-Satellite-Configs
 
-> Ambient-noise-adaptive volume for ESPHome voice satellites, as one maintained
-> package instead of a per-device debugging session.
+> Your voice satellite turns itself up in a noisy room and back down in a quiet
+> one — with a calibration you run by pressing a button, not by reading logs.
 
-Three voice satellite platforms — Home Assistant Voice PE, FutureProofHomes
-Satellite1, and formatBCE ReSpeaker Lite — all want the same feature: measure
-room noise, scale the media player volume to match. This repo ships that as a
-single parameterised package plus one profile per platform, so deploying to a
-new unit is a fifteen-line device file.
+## What this is
 
-It replaces `jaapp/ha-voice-dynamic-volume` and
-`adri6412/ha-voice-dynamic-volume-2025`, which contain six defects that make the
-feature silently inert — it compiles, flashes, and reports `0%` forever. See
-**[docs/UPSTREAM-BUG.md](docs/UPSTREAM-BUG.md)**, where each is cited to ESPHome
-source.
+ESPHome voice satellites answer at whatever volume you last set. That is too
+quiet with the TV on and startling at 6am. **Dynamic volume** fixes it: the
+device listens to the room, works out how loud it is, and scales its own
+speaking volume to match.
+
+This repo packages that for three devices — **Home Assistant Voice PE**,
+**FutureProofHomes Satellite1**, and **formatBCE ReSpeaker Lite** — as one
+shared config you import. Adding it to a device is a handful of lines, and each
+unit calibrates itself to its own room.
+
+It exists because the two community projects this was ported from
+([credits below](#credits-and-attribution)) contain six defects that make the
+feature silently do nothing — it compiles, flashes, reports `0%` forever, and
+never moves the volume. Every one is fixed here and documented with a citation
+to the ESPHome source that proves it, in
+**[docs/UPSTREAM-BUG.md](docs/UPSTREAM-BUG.md)**.
 
 ---
 
-## Quick start
+## Getting started
+
+### 1. What you need
+
+- **ESPHome 2026.7.0 or newer** (`pip install esphome`)
+- One of the three supported devices, already running its vendor firmware and
+  reachable on your network
+- Your WiFi credentials and the device's API key
+
+### 2. Set up
 
 ```bash
-pip install esphome                              # 2026.7.0 or newer
-cp devices/secrets.yaml.example devices/secrets.yaml
-$EDITOR devices/secrets.yaml
+git clone https://github.com/AnotherMike-exe/Plum-Satellite-Configs.git
+cd Plum-Satellite-Configs
 
-scripts/validate-all.sh                          # resolve every device config
-esphome run devices/voice-pe-01.yaml             # flash one
+cp devices/secrets.yaml.example devices/secrets.yaml
+$EDITOR devices/secrets.yaml          # WiFi + one API key per device
 ```
 
-Then **calibrate** — the shipped noise floors are guesses, not measurements.
-See [docs/CALIBRATION.md](docs/CALIBRATION.md).
+Check everything resolves before touching hardware:
+
+```bash
+scripts/validate-all.sh
+```
+
+### 3. Deploy
+
+Pick the device file matching your hardware and flash it:
+
+```bash
+esphome run devices/satellite1-01.yaml
+```
+
+Edit `name` and `friendly_name` in that file to match your unit first. **If the
+device already exists in Home Assistant, keep its existing `name` exactly** —
+changing it registers a second, unrelated device and orphans your entities.
+
+Flashing is over the network; no USB needed as long as the device is reachable.
+
+### 4. Calibrate
+
+Two button presses in Home Assistant, roughly a minute each.
+
+1. Get the room to its normal quiet — the level that should count as silence.
+   Press **Calibrate Quiet Floor** and leave it alone for 60 seconds.
+2. Play TV or music **from something other than this device**, at the level you
+   want it to talk over. Press **Calibrate Loud Ceiling**.
+
+Watch **Dyn. Vol. Calibration Status** for the result. Then turn on the
+**Dynamic Volume** switch.
+
+That is the whole setup. Everything below is detail you only need if you want it.
+
+> Play the loud sample from an external source. Through the device's own
+> speaker, the feedback guard correctly discards every reading and the capture
+> reports "too few samples".
+
+---
+
+## What appears in Home Assistant
+
+**Controls**
+
+| Entity | What it does |
+|---|---|
+| `Dynamic Volume` | Master switch. Off by default. |
+| `Dyn. Vol. Anchor` | Volume in a silent room. The baseline everything scales from. |
+| `Dyn. Vol. Strength` | How hard noise pushes volume above the anchor. `0` disables the effect without switching off. |
+
+**Calibration**
+
+| Entity | What it does |
+|---|---|
+| `Calibrate Quiet Floor` | 60s capture, sets the floor |
+| `Calibrate Loud Ceiling` | 60s capture, sets the ceiling |
+| `Reset Calibration` | Restores the values from the device YAML |
+| `Dyn. Vol. Noise Floor` | The measured floor, editable |
+| `Dyn. Vol. Loud Ceiling` | The measured ceiling, editable |
+| `Dyn. Vol. Calibration Status` | Progress and result text |
+
+**Diagnostics**
+
+| Entity | |
+|---|---|
+| `Ambient Sound Level` | Room loudness, 0–100% |
+| `Ambient Sound RMS` | Raw measurement in dB — the number calibration is about |
+| `Ambient Sound Peak` | Loudest recent sample *(disabled by default)* |
+| `Dyn. Vol. Target` | The volume actually applied *(disabled by default)* |
+
+Calibration results persist across reboots, which means the YAML values apply on
+**first boot only**. Use **Reset Calibration** to force them back.
+
+---
+
+## Supported hardware
+
+| | HA Voice PE | Satellite1 | ReSpeaker Lite |
+|---|---|---|---|
+| Vendor pin | `26.6.0` | `v0.2.1-beta.0` | `3136cf79` |
+| Microphone | `i2s_mics` | `sat1_mics` | `i2s_mics` |
+| Wake word gain | 4 | **6** | 4 |
+| Calibrated | — | **yes** | — |
+
+**Minimum ESPHome is 2026.7.0**, set by the Satellite1 vendor base.
+
+The gain difference is why the microphone binding is a per-platform parameter:
+the ambient sensor must read the same channel at the same gain as the wake word
+engine, or the calibration describes a signal the device does not otherwise use.
+That mismatch is [bug 2](docs/UPSTREAM-BUG.md).
+
+**Don't copy calibration values between platforms.** The Satellite1's XMOS
+front-end applies AGC and noise suppression, compressing its usable range to
+about **9 dB** — measured, not estimated. The PE and ReSpeaker capture raw I2S
+and should behave quite differently.
+
+---
+
+## Layout
+
+```
+packages/dynamic-volume.yaml   All the logic. One parameterised file.
+profiles/*.yaml                Vendor pin + hardware binding, one per platform.
+devices/*.yaml                 Per unit: name, calibration, credentials.
+scripts/validate-all.sh        Resolve every device config.
+docs/                          Calibration, the upstream bugs, architecture.
+```
+
+Three layers, because the settings split three ways: what the *package* does
+(shared), what a *platform* needs (mic id, gain), and what a *unit* needs (name,
+its room). Values pass down through `!include` `vars:`, which are lexically
+scoped — they cannot collide with a vendor package's own substitutions.
+
+`!secret` resolves relative to the config file's directory, which is why
+`secrets.yaml` lives in `devices/`.
+
+### Running it from Home Assistant instead
+
+Device files use `!include ../profiles/...`, so they only work inside a
+checkout. To manage a device from the HA ESPHome dashboard, point it at the
+published package instead:
+
+```yaml
+packages:
+  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@main
+```
+
+Remote packages are cloned whole, so the profile's own relative include still
+resolves.
 
 ## Adding a device
 
 ```yaml
 substitutions:
-  name: living-room-satellite
+  name: living-room-satellite      # must match the existing device, if any
   friendly_name: Living Room Satellite
-  ambient_min_db: "-55"          # measure this; see docs/CALIBRATION.md
 
 packages:
   plum: !include ../profiles/satellite1.yaml
@@ -55,66 +196,19 @@ wifi:
   password: !secret wifi_password
 ```
 
-That is the whole file. Everything hardware-specific lives in the profile.
-
-## Layout
-
-```
-packages/dynamic-volume.yaml   One parameterised package. All the logic.
-profiles/*.yaml                Vendor pin + hardware binding, one per platform.
-devices/*.yaml                 Per-unit: name, calibration, credentials.
-scripts/validate-all.sh        Resolve every device config.
-docs/                          Calibration, the upstream bugs, architecture.
-```
-
-Three layers, because the parameters split three ways: what the *package* does
-(shared), what a *platform* requires (mic id, gain), and what a *unit* needs
-(name, noise floor). Parameters pass down via `!include` `vars:`, which are
-lexically scoped — they do not leak into or out of global `substitutions:`.
-
-`!secret` resolves relative to the config file's own directory, which is why
-`secrets.yaml` lives in `devices/` and not the repo root.
-
-**Device files are not yet standalone.** They use `!include ../profiles/...`,
-so they only work inside a checkout of this repo — copying one alone into
-`/config/esphome/` fails. To manage a device from the Home Assistant ESPHome
-dashboard, swap the local include for the published package:
-
-```yaml
-packages:
-  plum: github://AnotherMike-exe/Plum-Satellite-Configs/profiles/satellite1.yaml@main
-```
-
-Remote packages are cloned whole, so the profile's own relative include of
-`packages/dynamic-volume.yaml` still resolves. Pin `@main` to a tag once
-`v1.0.0` is cut.
-
-## Supported hardware
-
-| | HA Voice PE | Satellite1 | ReSpeaker Lite |
-|---|---|---|---|
-| Vendor pin | `26.6.0` | `v0.2.1-beta.0` | `3136cf79` |
-| Microphone | `i2s_mics` | `sat1_mics` | `i2s_mics` |
-| Wake word gain | 4 | **6** | 4 |
-| Media player | `external_media_player` (all three, `speaker_source`) | | |
-
-The gain difference is why the microphone binding is a profile parameter rather
-than a constant: `sound_level` must read the same channel at the same gain as
-`micro_wake_word`, or the calibrated floor describes a signal the device does not
-otherwise use.
-
-**Minimum ESPHome is 2026.7.0**, set by the Satellite1 vendor base.
+Then calibrate it. Everything hardware-specific lives in the profile.
 
 ## Adding a new platform
 
-Do not guess component ids. Resolve them:
+Don't guess component ids — resolve them:
 
 ```bash
 esphome config devices/<device>.yaml | grep -E 'id: (.*mic|.*media_player|mww)'
 ```
 
-Then write a profile binding `mic_id`, `mic_channel`, `mic_gain_factor`,
-`media_player_id`, and `wake_word_id`. Confirm the mic binding matches:
+Write a profile binding `mic_id`, `mic_channel`, `mic_gain_factor`,
+`media_player_id` and `wake_word_id`, then confirm the microphone binding
+matches the wake word engine's:
 
 ```bash
 esphome config devices/<new>.yaml | grep -A6 'platform: sound_level'
@@ -122,49 +216,96 @@ esphome config devices/<new>.yaml | grep -A6 'platform: sound_level'
 
 ## Known gaps
 
-**Pinned packages do not pin their components.** Pinning `packages:` freezes the
+**Pinned packages don't pin their components.** Pinning `packages:` freezes the
 YAML, not the C++. Every vendor base declares `external_components` against a
-*moving* ref with `refresh: 0s` — PE pulls `voice_kit` from its own `dev`
+*moving* ref with `refresh: 0s` — the PE pulls `voice_kit` from its own `dev`
 branch, formatBCE pulls `i2s_audio` from a feature branch and `respeaker_lite`
 from `main`. A vendor can still change compiled behaviour under a fully pinned
-config. Overriding this needs `!remove` on the vendor key plus a complete pinned
-replacement list, across three platforms — deliberately deferred rather than
-bundled into the first release.
+config. Fixing it needs `!remove` plus a complete pinned replacement list across
+three platforms, deliberately deferred rather than bundled into the first
+release.
 
-**formatBCE publishes no tags or releases**, so the ReSpeaker pin is a bare
-commit SHA and must be bumped by hand.
+**formatBCE publishes no tags**, so the ReSpeaker pin is a bare commit SHA and
+must be bumped by hand.
 
-## Build status
+## Status
 
-All three device configs resolve from a cleared package cache, and all three
-platforms compile to firmware on ESPHome 2026.7.4:
-
-| Target | RAM | Flash |
-|---|---|---|
-| HA Voice PE | 44.8% | 35.2% of 8 MB |
-| Satellite1 | 46.3% | 35.7% of 8 MB |
-| ReSpeaker Lite | 44.8% | **71.1% of 3.9 MB** |
+| Target | Config | Compiles | On hardware |
+|---|---|---|---|
+| HA Voice PE | yes | RAM 44.8%, Flash 35.2% of 8 MB | not yet |
+| Satellite1 | yes | RAM 46.5%, Flash 36.0% of 8 MB | **yes, calibrated** |
+| ReSpeaker Lite | yes | RAM 44.8%, Flash 71.1% of 3.9 MB | not yet |
 
 The ReSpeaker partition is half the size of the others, so it has the least
-headroom — worth watching when adding wake word models.
-
-No unit has been flashed or calibrated yet.
+headroom — worth watching if you add wake word models.
 
 ## Roadmap
 
-- [ ] Calibrate all three units and record the measured floors
-- [ ] Tag `v1.0.0` once validated on one unit per platform; point `devices/` at
-      the tag rather than local `!include`
-- [ ] Upstream the dB-scaling and guard fixes to `jaapp` and `adri6412`
+- [ ] Calibrate the PE and ReSpeaker
+- [ ] Tag `v1.0.0`; point `devices/` at the tag rather than local `!include`
+- [ ] Offer the fixes upstream to `jaapp` and `adri6412`
 - [ ] Pin `external_components` to SHAs
 
 ## Documentation
 
-- [Calibration](docs/CALIBRATION.md) — measuring a unit's noise floor
-- [The upstream bugs](docs/UPSTREAM-BUG.md) — what was wrong and why
-- [Architecture](docs/ARCHITECTURE.md) — how the layering works
-- [Dev setup](docs/DEV-SETUP.md) · [Quick reference](docs/QUICK-REFERENCE.md)
-- [CLAUDE.md](CLAUDE.md) — project memory for Claude Code
+- [Calibration](docs/CALIBRATION.md) — the buttons, and tuning by hand
+- [The upstream bugs](docs/UPSTREAM-BUG.md) — what was wrong, with source citations
+- [Architecture](docs/ARCHITECTURE.md) — how the layering and signal path work
+- [CLAUDE.md](CLAUDE.md) — conventions and gotchas for anyone editing this
+
+---
+
+## Credits and attribution
+
+This project would not exist without prior work by others.
+
+**The original dynamic volume idea and implementation**
+
+- **[jaapp/ha-voice-dynamic-volume](https://github.com/jaapp/ha-voice-dynamic-volume)**
+  — the original, for the Home Assistant Voice PE. The core design here is
+  still recognisably jaapp's: an *anchor* volume scaled by a *strength* factor
+  against a measured ambient level, exposed as ESPHome template entities.
+- **[adri6412/ha-voice-dynamic-volume-2025](https://github.com/adri6412/ha-voice-dynamic-volume-2025)**
+  — a fork that carried the idea forward, and the version this was first
+  deployed from.
+
+The entity names in this package (`Dyn. Vol. Anchor`, `Dyn. Vol. Strength`,
+`Dynamic Volume`, `Ambient Sound Level`) are **deliberately identical** to
+theirs, so anyone migrating keeps their Home Assistant entity ids, dashboards
+and automations.
+
+This is a reimplementation rather than a copy, and
+[docs/UPSTREAM-BUG.md](docs/UPSTREAM-BUG.md) is blunt about the defects it
+corrects. That is meant as a bug report, not a criticism — the bugs are subtle,
+they stem from a genuinely misleading ESPHome API where a sensor documented in
+"decibels" returns negative dBFS, and the feature *looks* like it works. Finding
+them took live hardware and a read of the component source. The idea was theirs;
+this repo only fixes the arithmetic.
+
+**Device firmware** — this repo adds a feature to their work; it does not
+replace it:
+
+- **[esphome/home-assistant-voice-pe](https://github.com/esphome/home-assistant-voice-pe)** — Nabu Casa / ESPHome
+- **[FutureProofHomes/satellite1-esphome](https://github.com/futureproofhomes/satellite1-esphome)** — FutureProofHomes
+- **[formatBCE/Respeaker-Lite-ESPHome-integration](https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration)** — formatBCE
+
+**[ESPHome](https://github.com/esphome/esphome)** — the `sound_level`,
+`micro_wake_word`, `media_player` and `sendspin` components everything here is
+built on.
+
+### Licensing
+
+The ESPHome project and the PE and Satellite1 firmware repos are under the
+**ESPHome License**.
+
+The `jaapp`, `adri6412` and `formatBCE` repositories publish **no license
+file**, which under default copyright means no grant of reuse. This repo
+contains no copied code from any of them — the package is written from scratch
+against the ESPHome component APIs — but the design lineage is theirs and is
+credited above. If you are a maintainer of one of those projects and want
+something changed here, please open an issue.
+
+This repository does not yet carry a license of its own.
 
 ---
 

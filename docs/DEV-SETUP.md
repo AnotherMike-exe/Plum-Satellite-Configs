@@ -211,7 +211,7 @@ git config --global alias.pr 'pull --rebase'
 git config --global alias.sync 'pull --rebase origin main'
 ```
 
-**Why**: This prevents merge commits and keeps history clean. See [Git workflow best practices](./docs/git-workflow.md).
+**Why**: This prevents merge commits and keeps history clean. See [Git workflow best practices](QUICK-REFERENCE.md#git-workflow-best-practices).
 
 ### 2. Configure Git User Info
 ```bash

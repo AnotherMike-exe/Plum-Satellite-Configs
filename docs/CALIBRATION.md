@@ -151,14 +151,17 @@ meaningful movement.
 If the quiet room reads `-52 dB`, `-55` is a reasonable floor. Do not set it
 30 dB below; that compresses the whole useful range into the bottom few percent.
 
-**Sweep it live instead of reflashing.** The package exposes a
-**`Dyn. Vol. Noise Floor`** number entity. Move it in Home Assistant and watch
-`Ambient Sound Level` respond immediately — no rebuild, no OOM risk, no waiting.
-When you find the value, write it into the device YAML.
+**Sweep it live instead of reflashing.** The **`Dyn. Vol. Noise Floor`** and
+**`Dyn. Vol. Loud Ceiling`** number entities are editable in Home Assistant.
+Move one and watch `Ambient Sound Level` respond immediately — no rebuild, no
+OOM risk, no waiting.
 
-The entity is deliberately `restore_value: false`, so the YAML value wins on
-every boot. That means the slider is a scratchpad: **if you do not write your
-answer into the device file, the next reboot discards it.**
+Both bounds are `restore_value: true`, so what you set here survives reboots and
+the YAML values apply on first boot only. Still write your answer into the
+device file, so a reflashed or replacement unit starts in the right place — and
+use **Reset Calibration** if you want the YAML values back.
+
+Values snap to a 0.25 dB grid; see the note under Troubleshooting.
 
 ### 5. Bake it in
 
@@ -188,16 +191,22 @@ line every publish interval, indefinitely.
 
 ## Reading the diagnostics
 
-The package publishes four entities beyond the controls. Two are enabled by
-default; two are `disabled_by_default` and must be enabled in Home Assistant's
-entity settings.
+Beyond the three controls (`Dynamic Volume`, `Dyn. Vol. Anchor`,
+`Dyn. Vol. Strength`) the package publishes these. Two are
+`disabled_by_default` and must be enabled in Home Assistant's entity settings.
 
 | Entity | Default | Use |
 |---|---|---|
 | `Ambient Sound RMS` | enabled | **The calibration entity.** Raw smoothed dBFS. |
-| `Ambient Sound Level` | enabled | The derived 0–100%, after the floor is applied |
+| `Ambient Sound Level` | enabled | The derived 0–100%, after the bounds are applied |
+| `Dyn. Vol. Noise Floor` | enabled | The floor in use. Editable. |
+| `Dyn. Vol. Loud Ceiling` | enabled | The ceiling in use. Editable. |
+| `Dyn. Vol. Calibration Status` | enabled | Progress and result of a guided capture |
 | `Ambient Sound Peak` | disabled | Loudest recent sample. Checking for clipping. |
 | `Dyn. Vol. Target` | disabled | The volume actually applied. The control output. |
+
+Plus three buttons: `Calibrate Quiet Floor`, `Calibrate Loud Ceiling` and
+`Reset Calibration`.
 
 `Ambient Sound Peak` is intentionally *not* feedback-guarded, so it does include
 the device's own output. That is what makes it useful for confirming the
@@ -235,3 +244,17 @@ profile-level `vars:`.
 
 **Volume reacts too slowly.** Raise `ambient_smoothing_alpha` toward `1.0`, or
 lower `ambient_publish_every`. Both trade stability for speed.
+
+**Home Assistant says "enter a valid value" on a bound field.** The number is
+off the step grid. HA requires `(value - min)` to be an exact multiple of
+`step`, so the bounds use `step: 0.25` — a negative power of two, therefore
+exactly representable in binary floating point — and guided calibration rounds
+its result onto that grid. A value written before this was fixed (or set over
+the API without rounding) will still trip it: press **Calibrate Quiet Floor**
+again, or **Reset Calibration**, to rewrite it as a valid grid point.
+
+**A capture reports "too few samples".** Fewer than 5 readings arrived in the
+window. Either the microphone was muted, `micro_wake_word` was not running, or —
+most commonly — the loud sample was played through *this device's* speaker,
+where the feedback guard correctly discards every reading. Play it from
+something else.

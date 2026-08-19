@@ -10,6 +10,15 @@ to real noise.
 Every claim below is cited to ESPHome source. Line numbers are from **2026.7.4**.
 Paths are relative to `esphome/` inside the installed package.
 
+**This is a bug report, not a criticism.** The dynamic volume idea and its
+implementation are jaapp's, and this package still follows that design closely
+enough to keep the original entity names. The defects are genuinely subtle: the
+central one stems from an ESPHome API that documents a sensor in "decibels" and
+returns *negative dBFS*, so the natural reading of the value is the wrong one.
+The feature looks like it works. Finding these took live hardware and a read of
+the component source. Credit for the idea belongs upstream; this repo only
+fixes the arithmetic.
+
 ---
 
 ## Bug 1 — dB compared against a linear amplitude threshold
@@ -245,4 +254,9 @@ no `logger:` key at all.
 
 Bugs 1–4 and 6 affect anyone installing either upstream package as-is. Both
 repos are unmodified in this respect at the time of writing, and the fixes are
-small and self-contained. See the roadmap in `README.md`.
+small and self-contained — none of them changes the design, only the arithmetic
+and the guard conditions.
+
+Offering these upstream is on the roadmap in `README.md`. If you maintain
+either repository and want to take any of this, please do; no attribution to
+this repo is required or expected.
