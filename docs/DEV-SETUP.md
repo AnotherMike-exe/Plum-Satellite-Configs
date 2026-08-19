@@ -1,3 +1,26 @@
+> **Scope note for this repo.** This is the Plum Solutions standard developer
+> guide, kept verbatim for consistency across projects. Most of it — Node and
+> Python dependency setup, databases, migrations, Docker, CI — **does not apply
+> here**. This project is an ESPHome YAML configuration library: no application
+> code, no build system, no containers.
+>
+> What actually applies:
+>
+> ```bash
+> pip install esphome                             # 2026.7.0 or newer
+> cp devices/secrets.yaml.example devices/secrets.yaml
+> scripts/validate-all.sh                         # the test suite
+> esphome compile devices/voice-pe-01.yaml        # checks the C++ lambdas
+> esphome run devices/voice-pe-01.yaml            # flash + logs
+> ```
+>
+> Read [CLAUDE.md](CLAUDE.md) for the conventions that do apply, and
+> [CALIBRATION.md](CALIBRATION.md) before deploying to any unit. The git,
+> `_resources/`, and documentation-layout sections below are the relevant parts
+> of this guide.
+
+---
+
 # Developer Setup Guide
 
 > **Purpose**: This guide contains the setup tasks and configurations that human developers should complete before handing off work to Claude Code. Once this setup is complete, Claude can work more autonomously with your codebase.
