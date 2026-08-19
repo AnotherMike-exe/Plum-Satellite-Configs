@@ -121,6 +121,22 @@ bundled into the first release.
 **formatBCE publishes no tags or releases**, so the ReSpeaker pin is a bare
 commit SHA and must be bumped by hand.
 
+## Build status
+
+All four device configs resolve from a cleared package cache, and all three
+platforms compile to firmware on ESPHome 2026.7.4:
+
+| Target | RAM | Flash |
+|---|---|---|
+| HA Voice PE | 44.8% | 35.2% of 8 MB |
+| Satellite1 | 46.3% | 35.7% of 8 MB |
+| ReSpeaker Lite | 44.8% | **71.1% of 3.9 MB** |
+
+The ReSpeaker partition is half the size of the others, so it has the least
+headroom — worth watching when adding wake word models.
+
+No unit has been flashed or calibrated yet.
+
 ## Roadmap
 
 - [ ] Calibrate all four units and record the measured floors
