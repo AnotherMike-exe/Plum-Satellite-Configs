@@ -205,12 +205,15 @@ branch dropped a component. Note that pinning the package does **not** pin its
 
 ## Known Issues & Gotchas
 
-- **Only the Satellite1 is calibrated.** Measured 2026-08-19: quiet room
-  -72.3 dB, active -67.8 median / -63.6 loudest, so `ambient_min_db: -71`,
-  `ambient_max_db: -62`, `dv_curve_exponent: 0.7`. Its usable range is only
-  ~8.7 dB because the XMOS front-end applies AGC and noise suppression — do NOT
-  carry these numbers to the PE or ReSpeaker, which capture raw I2S and should
-  use much more of the dBFS scale.
+- **Calibration state (measured 2026-08-19).** Satellite1: fully calibrated,
+  quiet -72.3 dB, active -67.8 median / -63.6 loudest, so `ambient_min_db: -71`,
+  `ambient_max_db: -62`, `dv_curve_exponent: 0.7`; usable range only ~8.7 dB
+  because the XMOS front-end applies AGC. PE: floor only, quiet -82.2 dB mean
+  (sd 1.87) so `ambient_min_db: -78.5`; ceiling still 0 pending a loud sample.
+  ReSpeaker: nothing measured.
+  The PE floor sits ~7 dB below the Satellite1's with ~5x the sample spread,
+  which is the AGC difference showing up in the data — **never copy calibration
+  values between platforms.**
 - **`external_components` float on moving refs** inside pinned vendor packages.
 - **formatBCE has no tags**, so its pin is a bare SHA needing manual bumps.
 - **ReSpeaker migration**: adopting the upstream base drops the old fork's

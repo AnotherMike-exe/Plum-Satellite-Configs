@@ -125,7 +125,7 @@ Calibration results persist across reboots, which means the YAML values apply on
 | Vendor pin | `26.6.0` | `v0.2.1-beta.0` | `3136cf79` |
 | Microphone | `i2s_mics` | `sat1_mics` | `i2s_mics` |
 | Wake word gain | 4 | **6** | 4 |
-| Calibrated | — | **yes** | — |
+| Calibrated | floor only | **yes** | — |
 
 **Minimum ESPHome is 2026.7.0**, set by the Satellite1 vendor base.
 
@@ -134,10 +134,17 @@ the ambient sensor must read the same channel at the same gain as the wake word
 engine, or the calibration describes a signal the device does not otherwise use.
 That mismatch is [bug 2](docs/UPSTREAM-BUG.md).
 
-**Don't copy calibration values between platforms.** The Satellite1's XMOS
-front-end applies AGC and noise suppression, compressing its usable range to
-about **9 dB** — measured, not estimated. The PE and ReSpeaker capture raw I2S
-and should behave quite differently.
+**Don't copy calibration values between platforms** — this is measured, not
+theoretical. The Satellite1's XMOS front-end applies AGC and noise suppression;
+the PE captures raw I2S:
+
+| | Satellite1 | HA Voice PE |
+|---|---|---|
+| Quiet floor | −71.4 dB | **−78.5 dB** |
+| Sample spread (σ) | ~0.35 dB | **1.87 dB** |
+
+Seven dB apart, with five times the sample-to-sample variation on the PE. A
+floor copied across would be badly wrong in either direction.
 
 ---
 
@@ -234,7 +241,7 @@ All three build from the current source on ESPHome 2026.7.4:
 
 | Target | Config | Compiles | On hardware |
 |---|---|---|---|
-| HA Voice PE | yes | RAM 44.9%, Flash 35.3% of 8 MB | not yet |
+| HA Voice PE | yes | RAM 44.9%, Flash 35.3% of 8 MB | **yes, floor calibrated** |
 | Satellite1 | yes | RAM 46.5%, Flash 36.0% of 8 MB | **yes, calibrated** |
 | ReSpeaker Lite | yes | RAM 44.9%, Flash 71.2% of 3.9 MB | not yet |
 
@@ -243,7 +250,8 @@ headroom — worth watching if you add wake word models.
 
 ## Roadmap
 
-- [ ] Calibrate the PE and ReSpeaker
+- [ ] Measure the loud ceiling on the PE (floor is done)
+- [ ] Calibrate the ReSpeaker
 - [ ] Tag `v1.0.0`; point `devices/` at the tag rather than local `!include`
 - [ ] Offer the fixes upstream to `jaapp` and `adri6412`
 - [ ] Pin `external_components` to SHAs

@@ -13,10 +13,12 @@
 # ---------------------------------------------------------------------------
 
 substitutions:
-  # NOT YET MEASURED. Raw I2S capture with no AGC, so unlike the Satellite1
-  # this one should use most of the dBFS scale -- keep ambient_max_db at 0
-  # until measurement says otherwise.
-  ambient_min_db: "-42"
+  # Floor MEASURED 2026-08-19 on unit 01: quiet room -82.2 dB mean, sd 1.87.
+  # Raw I2S with no AGC, so the floor sits ~7 dB below the Satellite1's and the
+  # sample-to-sample spread is ~5x wider. Ceiling NOT yet measured -- left at 0
+  # because this stream should reach much closer to full scale than the
+  # AGC-flattened Satellite1 does. Run Calibrate Loud Ceiling to pin it down.
+  ambient_min_db: "-78.5"
   ambient_max_db: "0"
   dv_curve_exponent: "0.4"
 

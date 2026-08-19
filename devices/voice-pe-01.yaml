@@ -4,10 +4,12 @@
 substitutions:
   name: home-assistant-voice-09472d
   friendly_name: Home Assistant Voice PE - 01
-  # Quiet-room floor measured on THIS unit. See docs/CALIBRATION.md.
-  # Measured ~-35 to -40 dB at rest under the old (peak, channel 0, gain 1)
-  # setup -- RE-MEASURE, this value predates the RMS and channel/gain fixes.
-  ambient_min_db: "-42"
+  # MEASURED 2026-08-19: quiet room -82.2 dB mean (sd 1.87), so the floor is
+  # mean + 2*sd quantised to the 0.25 grid. The old -42 came from the broken
+  # peak/channel-0/gain-1 setup and was 40 dB above the real floor, which is
+  # why the sensor read 0% permanently.
+  # Ceiling still unmeasured -- needs a loud sample with someone in the room.
+  ambient_min_db: "-78.5"
 
 packages:
   plum: !include ../profiles/voice-pe.yaml
@@ -27,15 +29,15 @@ wifi:
 
 # Uncomment while calibrating this unit's noise floor, then comment out again.
 # See docs/CALIBRATION.md.
-#logger:
-#  level: DEBUG
-#  initial_level: DEBUG
-#  logs:
-#    ambient_sound: DEBUG
-#    dynamic_volume: DEBUG
-#    # Global level is the CEILING -- a per-tag level cannot be more verbose
-#    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
-#    # noisy tags here, not by lowering the global level.
-#    sensor: WARN
-#    component: WARN
-#    api: WARN
+logger:
+  level: DEBUG
+  initial_level: DEBUG
+  logs:
+    ambient_sound: DEBUG
+    dynamic_volume: DEBUG
+    # Global level is the CEILING -- a per-tag level cannot be more verbose
+    # than it, so calibration needs DEBUG globally. Quiet the flood by raising
+    # noisy tags here, not by lowering the global level.
+    sensor: WARN
+    component: WARN
+    api: WARN
