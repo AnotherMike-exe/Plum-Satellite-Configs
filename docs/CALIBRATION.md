@@ -29,7 +29,69 @@ Two identical units in two rooms need two different numbers.
 
 ---
 
-## Procedure
+## Guided calibration (recommended)
+
+The firmware can measure itself. Four entities appear in Home Assistant:
+
+| Entity | What it does |
+|---|---|
+| **Calibrate Quiet Floor** (button) | Records 60s, sets the floor |
+| **Calibrate Loud Ceiling** (button) | Records 60s, sets the ceiling |
+| **Reset Calibration** (button) | Restores the values from the device YAML |
+| **Dyn. Vol. Calibration Status** (text) | Progress and result |
+
+### Steps
+
+1. **Quiet the room** to its normal resting state — the level the device should
+   treat as silence. Press **Calibrate Quiet Floor** and leave the room alone
+   for 60 seconds.
+2. **Play TV or music from an external source** at the level you want the
+   device to talk over. Press **Calibrate Loud Ceiling** and let it run.
+3. Check **Dyn. Vol. Calibration Status**. It reports the value set, the window
+   mean, the spread, and the sample count.
+
+That is the whole procedure. Copy the resulting numbers into the device YAML so
+a fresh unit starts near the right place.
+
+> **Play the loud sample from an external source.** If you play it through this
+> device's own media player, the feedback guard drops every sample and the
+> capture reports "too few samples" — working as designed, since measuring your
+> own output would be meaningless.
+
+### What it actually computes
+
+Each capture accumulates the **filtered** RMS (post median and EMA, so
+transients are already suppressed) and sets the bound to:
+
+```
+bound = mean + calibration_sigma * stddev        # sigma defaults to 2.0
+```
+
+Using a spread-aware bound rather than the raw min or max means one cough
+during a quiet capture cannot pin the floor to the cough. Two sigma covers
+roughly 98% of a normal distribution, so the quiet floor lands just above the
+loudest moment of a genuinely quiet room — which is exactly the semantics you
+want, since anything at or below "quiet" should read 0%.
+
+Measured example (Satellite1, 2026-08-19): a 60s quiet capture set the floor to
+**-71.4 dB**, after which the resting room read a steady 0.0%.
+
+### Persistence
+
+The two bounds are `restore_value: true`, so a calibration survives reboots —
+otherwise the feature would be pointless. The trade-off: `ambient_min_db` and
+`ambient_max_db` in YAML are used on **first boot only**. After that the
+restored value wins and editing YAML looks like it does nothing. Press **Reset
+Calibration** to force the YAML values back.
+
+---
+
+## Manual procedure
+
+Use this when tuning by eye, or on a platform where you want to see the raw
+numbers before committing to them.
+
+### Manual steps
 
 ### 1. Enable calibration logging
 

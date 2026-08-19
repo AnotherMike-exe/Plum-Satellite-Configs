@@ -59,6 +59,13 @@ substitutions:
   # only a starting guess.
   ambient_min_db: "-55"
   ambient_max_db: "0"
+  # Guided calibration (see the button entities). Duration of one capture, and
+  # how many standard deviations above the window mean the resulting bound is
+  # placed. 2 sigma covers ~98% of a normal distribution, so the quiet floor
+  # lands just above the loudest moment of a quiet room and brief noises during
+  # the capture do not drag it far.
+  calibration_duration: 60s
+  calibration_sigma: "2.0"
 
   # --- timing --------------------------------------------------------------
   # measurement_duration is the sample period for the whole chain; the two
@@ -115,6 +122,26 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  # Guided-calibration accumulators. Welford is unnecessary here: the window is
+  # ~20-30 samples of a value already bounded to roughly [-95, 0], so a naive
+  # sum of squares cannot lose meaningful precision.
+  - id: dv_cal_mode          # 0 = idle, 1 = measuring floor, 2 = measuring ceiling
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: dv_cal_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: dv_cal_sum
+    type: float
+    restore_value: no
+    initial_value: '0'
+  - id: dv_cal_sumsq
+    type: float
+    restore_value: no
+    initial_value: '0'
+
 number:
   # Entity names match the upstream package so that Home Assistant entity_ids
   # survive the migration and existing dashboards and automations keep working.
@@ -148,23 +175,31 @@ number:
     on_value:
       - script.execute: update_dynamic_volume
 
-  # Live calibration knob for the noise floor.
+  # --- Calibration bounds --------------------------------------------------
   #
-  # restore_value is deliberately FALSE: ${ambient_min_db} in the device YAML
-  # stays authoritative on every boot, so editing YAML and reflashing actually
-  # changes behaviour. With restore_value: true you get the classic trap where
-  # a stale restored value silently overrides the config.
+  # These define the dB window mapped onto 0-100%. They are live-editable and
+  # are what the two Calibrate buttons write to.
   #
-  # Sweep this while watching "Ambient Sound Level" to find the value, then
-  # bake the answer into the device file. See docs/CALIBRATION.md.
+  # restore_value is TRUE so a calibration survives a reboot -- a guided
+  # calibration that evaporated on power loss would be pointless. The trade-off
+  # is that ${ambient_min_db} / ${ambient_max_db} in YAML are the values used
+  # on FIRST boot only; afterwards the restored value wins and editing YAML
+  # appears to do nothing. Use the "Reset Calibration" button to force the YAML
+  # values back.
   - platform: template
     name: "Dyn. Vol. Noise Floor"
     id: dynamic_volume_noise_floor
-    min_value: -90        # 16-bit full-scale RMS bottoms out near -90 dBFS
+    min_value: -95        # below the 16-bit noise floor
     max_value: 0
-    step: 1
+    # 0.25, not 0.1, and deliberately so. Home Assistant's number input requires
+    # (value - min) to be an exact multiple of step. 0.1 is not representable in
+    # binary floating point, so a computed value like -71.4 arrives as
+    # -71.400001525878906 and the field reports "enter a valid value" the moment
+    # it is focused. 0.25 is a negative power of two, so every grid point in
+    # [-95, 0] is exact and the check always passes.
+    step: 0.25
     initial_value: ${ambient_min_db}
-    restore_value: false
+    restore_value: true
     optimistic: true
     mode: box
     icon: "mdi:tune"
@@ -172,6 +207,87 @@ number:
     entity_category: config
     on_value:
       - script.execute: update_dynamic_volume
+
+  - platform: template
+    name: "Dyn. Vol. Loud Ceiling"
+    id: dynamic_volume_ceiling
+    min_value: -95
+    max_value: 0
+    step: 0.25        # see the note on the noise floor above
+
+    initial_value: ${ambient_max_db}
+    restore_value: true
+    optimistic: true
+    mode: box
+    icon: "mdi:tune"
+    unit_of_measurement: "dB"
+    entity_category: config
+    on_value:
+      - script.execute: update_dynamic_volume
+
+button:
+  # --- Guided calibration --------------------------------------------------
+  #
+  # Each button records the smoothed RMS for ${calibration_duration}, then sets
+  # the corresponding bound to (mean + ${calibration_sigma} * stddev) of the
+  # window. Using a spread-aware bound rather than the raw min/max means a
+  # single cough during a quiet capture cannot pin the floor to the cough.
+  #
+  # Sampling the FILTERED rms sensor is deliberate: it has already been through
+  # the median and EMA stages, so transients are largely gone before they reach
+  # the accumulator.
+  #
+  # NOTE for the loud capture: play the audio from an EXTERNAL source (TV,
+  # phone, another speaker). If you play it through this device's own media
+  # player the feedback guard drops every sample and the capture will report
+  # too few samples.
+  - platform: template
+    name: "Calibrate Quiet Floor"
+    id: dv_calibrate_floor_button
+    icon: "mdi:volume-off"
+    entity_category: config
+    on_press:
+      - script.execute:
+          id: dv_calibrate
+          mode: 1
+
+  - platform: template
+    name: "Calibrate Loud Ceiling"
+    id: dv_calibrate_ceiling_button
+    icon: "mdi:volume-high"
+    entity_category: config
+    on_press:
+      - script.execute:
+          id: dv_calibrate
+          mode: 2
+
+  # Because the bounds are restore_value: true, this is the only way to get
+  # back to the values in the device YAML without erasing flash.
+  - platform: template
+    name: "Reset Calibration"
+    id: dv_reset_calibration_button
+    icon: "mdi:backup-restore"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          auto f = id(dynamic_volume_noise_floor).make_call();
+          f.set_value(static_cast<float>(${ambient_min_db}));
+          f.perform();
+          auto c = id(dynamic_volume_ceiling).make_call();
+          c.set_value(static_cast<float>(${ambient_max_db}));
+          c.perform();
+          id(dv_calibration_status).publish_state("Reset to YAML defaults");
+          ESP_LOGI("dynamic_volume", "Calibration reset to YAML defaults (%.1f / %.1f dB)",
+                   static_cast<float>(${ambient_min_db}),
+                   static_cast<float>(${ambient_max_db}));
+
+text_sensor:
+  - platform: template
+    name: "Dyn. Vol. Calibration Status"
+    id: dv_calibration_status
+    icon: "mdi:progress-check"
+    entity_category: diagnostic
+    update_interval: never
 
 switch:
   - platform: template
@@ -316,6 +432,15 @@ sensor:
       # sensor re-read the first sensor's already-published state on a 5s poll
       # and re-applied an identical filter chain.
       on_value:
+        # Feed a running calibration, if one is active. `x` here is the fully
+        # filtered dB value, so the accumulator sees the same signal the
+        # control loop does.
+        - lambda: |-
+            if (id(dv_cal_mode) != 0) {
+              id(dv_cal_n) += 1;
+              id(dv_cal_sum) += x;
+              id(dv_cal_sumsq) += x * x;
+            }
         - sensor.template.publish:
             id: ambient_sound_level
             state: !lambda |-
@@ -323,8 +448,10 @@ sensor:
               if (!std::isfinite(floor_db)) {
                 floor_db = static_cast<float>(${ambient_min_db});
               }
-
-              const float ceil_db = static_cast<float>(${ambient_max_db});
+              float ceil_db = id(dynamic_volume_ceiling).state;
+              if (!std::isfinite(ceil_db)) {
+                ceil_db = static_cast<float>(${ambient_max_db});
+              }
               float span = ceil_db - floor_db;
               if (span < 1.0f) span = 1.0f;   // guard a floor set above the ceiling
 
@@ -377,6 +504,78 @@ sensor:
     update_interval: never
 
 script:
+  # --- Guided calibration --------------------------------------------------
+  #
+  # mode 1 = quiet floor, mode 2 = loud ceiling.
+  #
+  # mode: single means a second press while a capture is running is ignored
+  # rather than corrupting the accumulator mid-window. The status text sensor
+  # is the user-visible feedback for that.
+  - id: dv_calibrate
+    mode: single
+    parameters:
+      mode: int
+    then:
+      - lambda: |-
+          id(dv_cal_n) = 0;
+          id(dv_cal_sum) = 0.0f;
+          id(dv_cal_sumsq) = 0.0f;
+          id(dv_cal_mode) = mode;
+          const char *what = (mode == 1) ? "quiet floor" : "loud ceiling";
+          char buf[64];
+          snprintf(buf, sizeof(buf), "Measuring %s...", what);
+          id(dv_calibration_status).publish_state(buf);
+          ESP_LOGI("dynamic_volume", "Calibration started: %s", what);
+
+      - delay: ${calibration_duration}
+
+      - lambda: |-
+          const int   m = id(dv_cal_mode);
+          const uint32_t n = id(dv_cal_n);
+          id(dv_cal_mode) = 0;   // stop accumulating before anything else
+
+          // Need enough samples for a meaningful spread. At the default 1s
+          // measurement duration and publish_every 3, a 60s window yields ~20.
+          if (n < 5) {
+            char buf[96];
+            snprintf(buf, sizeof(buf),
+                     "Failed: only %u samples. Is the mic muted, or was audio "
+                     "playing on this device?", (unsigned) n);
+            id(dv_calibration_status).publish_state(buf);
+            ESP_LOGW("dynamic_volume", "Calibration aborted: %u samples", (unsigned) n);
+            return;
+          }
+
+          const float mean = id(dv_cal_sum) / n;
+          float var = (id(dv_cal_sumsq) / n) - (mean * mean);
+          if (var < 0.0f) var = 0.0f;          // floating-point noise near zero spread
+          const float sd = sqrtf(var);
+
+          // Place the bound above the window mean so that, for the floor,
+          // everything at or below "quiet" clamps to 0%.
+          float bound = mean + static_cast<float>(${calibration_sigma}) * sd;
+
+          // Snap onto the number's 0.25 step grid. Without this the entity
+          // holds an arbitrary computed float that is not a valid grid point,
+          // and Home Assistant refuses to accept the field. 0.25 is exactly
+          // representable, so the rounded result is exact rather than merely
+          // close.
+          bound = roundf(bound * 4.0f) / 4.0f;
+
+          const char *what = (m == 1) ? "Quiet floor" : "Loud ceiling";
+          auto target = (m == 1) ? id(dynamic_volume_noise_floor).make_call()
+                                 : id(dynamic_volume_ceiling).make_call();
+          target.set_value(bound);
+          target.perform();
+
+          char buf[110];
+          snprintf(buf, sizeof(buf), "%s set to %.1f dB (mean %.1f, sd %.1f, %u samples)",
+                   what, bound, mean, sd, (unsigned) n);
+          id(dv_calibration_status).publish_state(buf);
+          ESP_LOGI("dynamic_volume", "%s", buf);
+
+      - script.execute: update_dynamic_volume
+
   # Event-driven: runs when a new smoothed level lands, when a tuning number
   # changes, and when the switch is turned on. No `interval:` block is needed
   # -- during playback the guard suppresses publishes, so this correctly does
